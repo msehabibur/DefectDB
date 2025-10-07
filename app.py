@@ -134,8 +134,9 @@ def parse_total_energy_for_folder(folder_id: str) -> Tuple[Optional[float], str]
     Return (energy, source_label).
     """
     kids = list_children(folder_id)
-    # Prefer OUTCAR
+    # index by lowercase name (Drive is case-sensitive for names, we normalize)
     cand = {k["name"].lower(): k for k in kids}
+
     def try_file(name_options, parser):
         for nm in name_options:
             if nm in cand:
@@ -145,6 +146,7 @@ def parse_total_energy_for_folder(folder_id: str) -> Tuple[Optional[float], str]
                 if e is not None:
                     return e, nm
         return None, ""
+
     # Try OUTCAR
     e, src = try_file(["outcar.gz", "outcar"], parse_outcar_energy)
     if e is not None: return e, src.upper()
@@ -175,19 +177,26 @@ def discover_defects(compound_folder_id: str) -> Dict[str, str]:
     return dict(sorted(m.items(), key=lambda x: x[0].lower()))
 
 def discover_charge_states(defect_folder_id: str) -> Dict[str, str]:
-    """Return {charge_label: folder_id} for subfolders (q+2, q0, q-1, ...)"""
+    """Return {charge_label: folder_id} for subfolders (q+2, q0, q-1, ...)."""
     m = {}
     for f in list_children(defect_folder_id):
         if f["mimeType"] == "application/vnd.google-apps.folder":
             m[f["name"]] = f["id"]
+
     # Sort by integer charge if possible: q+2 > q+1 > q0 > q-1 ...
-    def key_fn(lbl):
-        s = lbl.lower().replace("q", "")
+    def parse_q(lbl: str) -> Optional[int]:
+        s = lbl.strip().lower()
+        s = s.replace("q", "")
         try:
             return int(s)
         except Exception:
-            return -999999
-    return dict(sorted(m.items(), key=lambda x: key_fn(x[0]), reverse=True))
+            # try formats like "+2", "-1", "0"
+            try:
+                return int(s)
+            except Exception:
+                return None
+
+    return dict(sorted(m.items(), key=lambda x: (parse_q(x[0]) is None, -(parse_q(x[0]) or 0))))
 
 def find_bulk_folder(compound_folder_id: str) -> Optional[str]:
     for f in list_children(compound_folder_id):
@@ -217,7 +226,7 @@ if refresh:
             bulk_id = find_bulk_folder(comp_id)
             overview_rows.append({"Compound": comp, "Has Bulk folder": "Yes" if bulk_id else "No"})
         st.subheader("📦 Compounds")
-        st.dataframe(pd.DataFrame(overview_rows), use_container_width=True)
+        st.dataframe(pd.DataFrame(overview_rows), width="stretch")
 
         # 2) Select compound
         comp_sel = st.selectbox("Select a compound", list(compounds.keys()))
@@ -246,7 +255,7 @@ if refresh:
             st.warning("No defect folders found inside this compound.")
             st.stop()
 
-        st.dataframe(pd.DataFrame({"Defect": list(defects.keys())}), use_container_width=True)
+        st.dataframe(pd.DataFrame({"Defect": list(defects.keys())}), width="stretch")
 
         defect_sel = st.selectbox("Select a defect", list(defects.keys()))
         defect_id = defects[defect_sel]
@@ -265,10 +274,34 @@ if refresh:
                 except Exception as e:
                     rows.append({"Charge": qlbl, "Total Energy (eV)": None, "Source": f"error: {e}"})
             df = pd.DataFrame(rows)
-            st.dataframe(df, use_container_width=True)
-            st.download_button("Download energies (CSV)", df.to_csv(index=False).encode(), file_name=f"{comp_sel}_{defect_sel}_energies.csv")
+            st.dataframe(df, width="stretch")
+            st.download_button(
+                "Download energies (CSV)",
+                df.to_csv(index=False).encode(),
+                file_name=f"{comp_sel}_{defect_sel}_energies.csv",
+            )
 
     except HttpError as he:
         st.error(f"Google Drive API error: {he}")
     except Exception as e:
         st.error(f"Unexpected error: {e}")
+
+# ---------- Help / Notes (SAFE: inside Streamlit, not raw Python) ----------
+with st.expander("ℹ️ Help / Expected Folder Structure"):
+    st.markdown(
+        """
+**Folder structure expected:**
+- Root Folder (the ID you paste here)
+  - `Compound_A/`
+    - `Bulk/`  ← (optional) contains `OUTCAR(.gz)`, `vasprun.xml(.gz)`, or `OSZICAR(.gz)`
+    - `V_Cd/`
+      - `q0/`, `q+1/`, `q-1/`, ... each with a VASP output file
+    - `Cl_Te/`
+      - `q0/`, `q+1/`, `q-1/`, ...
+  - `Compound_B/`
+    - ...
+
+**Energy parsing priority:** `OUTCAR` → `vasprun.xml` → `OSZICAR`.  
+Gzipped files with `.gz` extension are supported.
+"""
+    )
