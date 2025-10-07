@@ -378,7 +378,4 @@ if scan:
     except Exception as e:
         st.error(f"Unexpected error: {e}")
 
-# Helpful footer notes (properly closed triple quotes!)
-st.markdown("""
-**Notes**
 - Folder structure expected:
