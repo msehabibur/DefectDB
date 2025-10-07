@@ -1,21 +1,4 @@
-# app.py
-# Database viewer for DefectDB on Google Drive
-# - Lists compounds (folders) under a root Drive folder
-# - For a compound: lists defect folders
-# - For a defect: finds charge-state subfolders and parses total energy
-# - Shows Bulk/ total energy if present
-#
-# Requirements:
-#   streamlit
-#   google-api-python-client
-#   google-auth
-#   google-auth-httplib2
-#   pandas
-#   numpy
-#   pymatgen
-#
-# Secrets (.streamlit/secrets.toml) must contain [gdrive_service_account] as you set up.
-
+# app.py — dynamic DefectDB browser (Drive)
 import io
 import gzip
 import re
@@ -85,8 +68,8 @@ def parse_outcar_energy(raw: bytes) -> Optional[float]:
         with tempfile.NamedTemporaryFile(delete=True, suffix=".OUTCAR") as tmp:
             tmp.write(raw); tmp.flush()
             out = Outcar(tmp.name)
-            if getattr(out, "final_energy", None) is not None:
-                return float(out.final_energy)
+        if getattr(out, "final_energy", None) is not None:
+            return float(out.final_energy)
     except Exception:
         pass
     text = raw.decode(errors="ignore")
@@ -111,8 +94,8 @@ def parse_vasprun_energy(raw: bytes) -> Optional[float]:
         with tempfile.NamedTemporaryFile(delete=True, suffix=".xml") as tmp:
             tmp.write(raw); tmp.flush()
             vr = Vasprun(tmp.name, parse_dos=False, parse_eigen=False)
-            if getattr(vr, "final_energy", None) is not None:
-                return float(vr.final_energy)
+        if getattr(vr, "final_energy", None) is not None:
+            return float(vr.final_energy)
     except Exception:
         return None
     return None
@@ -134,7 +117,6 @@ def parse_total_energy_for_folder(folder_id: str) -> Tuple[Optional[float], str]
     Return (energy, source_label).
     """
     kids = list_children(folder_id)
-    # index by lowercase name (Drive is case-sensitive for names, we normalize)
     cand = {k["name"].lower(): k for k in kids}
 
     def try_file(name_options, parser):
@@ -147,20 +129,19 @@ def parse_total_energy_for_folder(folder_id: str) -> Tuple[Optional[float], str]
                     return e, nm
         return None, ""
 
-    # Try OUTCAR
     e, src = try_file(["outcar.gz", "outcar"], parse_outcar_energy)
-    if e is not None: return e, src.upper()
-    # Try vasprun.xml
+    if e is not None:
+        return e, src.upper()
     e, src = try_file(["vasprun.xml.gz", "vasprun.xml"], parse_vasprun_energy)
-    if e is not None: return e, src
-    # Try OSZICAR
+    if e is not None:
+        return e, src
     e, src = try_file(["oszicar.gz", "oszicar"], parse_oszicar_energy)
-    if e is not None: return e, src.upper()
+    if e is not None:
+        return e, src.upper()
     return None, "not_found"
 
 # ---------- Discovery logic ----------
 def discover_compounds(root_folder_id: str) -> Dict[str, str]:
-    """Return {compound_name: folder_id} for all immediate subfolders."""
     m = {}
     for f in list_children(root_folder_id):
         if f["mimeType"] == "application/vnd.google-apps.folder":
@@ -168,34 +149,26 @@ def discover_compounds(root_folder_id: str) -> Dict[str, str]:
     return dict(sorted(m.items(), key=lambda x: x[0].lower()))
 
 def discover_defects(compound_folder_id: str) -> Dict[str, str]:
-    """Return {defect_name: folder_id} for defect subfolders (excluding Bulk)."""
     m = {}
     for f in list_children(compound_folder_id):
-        if f["mimeType"] == "application/vnd.google-apps.folder":
-            if f["name"].lower() != "bulk":
-                m[f["name"]] = f["id"]
+        if f["mimeType"] == "application/vnd.google-apps.folder" and f["name"].lower() != "bulk":
+            m[f["name"]] = f["id"]
     return dict(sorted(m.items(), key=lambda x: x[0].lower()))
 
 def discover_charge_states(defect_folder_id: str) -> Dict[str, str]:
-    """Return {charge_label: folder_id} for subfolders (q+2, q0, q-1, ...)."""
     m = {}
     for f in list_children(defect_folder_id):
         if f["mimeType"] == "application/vnd.google-apps.folder":
             m[f["name"]] = f["id"]
 
-    # Sort by integer charge if possible: q+2 > q+1 > q0 > q-1 ...
     def parse_q(lbl: str) -> Optional[int]:
-        s = lbl.strip().lower()
-        s = s.replace("q", "")
+        s = lbl.strip().lower().replace("q", "")
         try:
             return int(s)
         except Exception:
-            # try formats like "+2", "-1", "0"
-            try:
-                return int(s)
-            except Exception:
-                return None
+            return None
 
+    # sort: numeric charges first (desc), then unknowns
     return dict(sorted(m.items(), key=lambda x: (parse_q(x[0]) is None, -(parse_q(x[0]) or 0))))
 
 def find_bulk_folder(compound_folder_id: str) -> Optional[str]:
@@ -204,89 +177,165 @@ def find_bulk_folder(compound_folder_id: str) -> Optional[str]:
             return f["id"]
     return None
 
+# ---------- Aggregation ----------
+def scan_compound(compound_name: str, compound_id: str) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    """
+    Returns:
+      bulk_df: 1-row table (Compound, Energy, Source) or 'not_found'
+      defects_df: rows for each (Defect, Charge, Energy, Source), including not_found cases
+    """
+    # Bulk
+    bulk_id = find_bulk_folder(compound_id)
+    if bulk_id:
+        ebulk, src = parse_total_energy_for_folder(bulk_id)
+        bulk_rows = [{
+            "Compound": compound_name,
+            "Total Energy (eV)": ebulk,
+            "Source": src if src else "not_found"
+        }]
+    else:
+        bulk_rows = [{
+            "Compound": compound_name,
+            "Total Energy (eV)": None,
+            "Source": "not_found"
+        }]
+    bulk_df = pd.DataFrame(bulk_rows)
+
+    # Defects & charges
+    defects = discover_defects(compound_id)
+    defect_rows = []
+    if not defects:
+        # No defects at all -> emit a placeholder line
+        defect_rows.append({
+            "Compound": compound_name,
+            "Defect": "—",
+            "Charge": "—",
+            "Total Energy (eV)": None,
+            "Source": "no_defect_folders"
+        })
+    else:
+        for defect_name, defect_id in defects.items():
+            charges = discover_charge_states(defect_id)
+            if not charges:
+                defect_rows.append({
+                    "Compound": compound_name,
+                    "Defect": defect_name,
+                    "Charge": "—",
+                    "Total Energy (eV)": None,
+                    "Source": "no_charge_state_folder"
+                })
+                continue
+            for qlbl, qid in charges.items():
+                try:
+                    e, src = parse_total_energy_for_folder(qid)
+                    defect_rows.append({
+                        "Compound": compound_name,
+                        "Defect": defect_name,
+                        "Charge": qlbl,
+                        "Total Energy (eV)": e,
+                        "Source": src if src else "not_found"
+                    })
+                except Exception as ex:
+                    defect_rows.append({
+                        "Compound": compound_name,
+                        "Defect": defect_name,
+                        "Charge": qlbl,
+                        "Total Energy (eV)": None,
+                        "Source": f"error: {ex}"
+                    })
+    defects_df = pd.DataFrame(defect_rows)
+    return bulk_df, defects_df
+
 # ---------- UI ----------
 st.title("🧪 DefectDB Browser")
 
 with st.sidebar:
     st.header("Data Source")
     root_id = st.text_input("Root Folder ID", value=ROOT_FOLDER_ID_DEFAULT)
-    refresh = st.button("Scan")
+    if st.button("Scan Root"):
+        try:
+            compounds = discover_compounds(root_id)
+            if not compounds:
+                st.error("No compound folders found in this root. Make sure the service account has Viewer access.")
+                st.stop()
+            st.session_state["compounds"] = compounds
+            st.success(f"Found {len(compounds)} compound folder(s).")
+        except HttpError as he:
+            st.error(f"Google Drive API error: {he}")
+        except Exception as e:
+            st.error(f"Unexpected error: {e}")
 
-if refresh:
-    try:
-        # 1) Compounds
-        compounds = discover_compounds(root_id)
-        if not compounds:
-            st.error("No compound folders found in this root. Make sure the service account has Viewer access.")
-            st.stop()
+compounds = st.session_state.get("compounds", None)
+if compounds:
+    st.subheader("📦 Compounds")
+    overview_rows = []
+    for comp, comp_id in compounds.items():
+        overview_rows.append({"Compound": comp, "Has Bulk": "Yes" if find_bulk_folder(comp_id) else "No"})
+    st.dataframe(pd.DataFrame(overview_rows), width="stretch")
 
-        # Overview table
-        overview_rows = []
-        for comp, comp_id in compounds.items():
-            bulk_id = find_bulk_folder(comp_id)
-            overview_rows.append({"Compound": comp, "Has Bulk folder": "Yes" if bulk_id else "No"})
-        st.subheader("📦 Compounds")
-        st.dataframe(pd.DataFrame(overview_rows), width="stretch")
+    comp_sel = st.selectbox("Select a compound", list(compounds.keys()))
+    colA, colB = st.columns([1, 1])
 
-        # 2) Select compound
-        comp_sel = st.selectbox("Select a compound", list(compounds.keys()))
-        comp_id = compounds[comp_sel]
+    with colA:
+        if st.button("Scan Selected Compound"):
+            comp_id = compounds[comp_sel]
+            try:
+                bulk_df, defects_df = scan_compound(comp_sel, comp_id)
+                st.session_state["bulk_df"] = bulk_df
+                st.session_state["defects_df"] = defects_df
+                st.success("Scan complete.")
+            except HttpError as he:
+                st.error(f"Google Drive API error: {he}")
+            except Exception as e:
+                st.error(f"Unexpected error: {e}")
 
-        # 3) Bulk energy (if present)
-        st.markdown("### 🧱 Bulk Energy")
-        bulk_id = find_bulk_folder(comp_id)
-        if bulk_id:
-            if st.button("Read Bulk Total Energy", key=f"bulk_{comp_sel}"):
-                try:
-                    ebulk, src = parse_total_energy_for_folder(bulk_id)
-                    if ebulk is None:
-                        st.error("Could not parse bulk energy from OUTCAR/vasprun.xml/OSZICAR.")
-                    else:
-                        st.success(f"Bulk total energy: **{ebulk:.6f} eV** (from: {src})")
-                except Exception as e:
-                    st.error(f"Error reading bulk energy: {e}")
-        else:
-            st.info("No `Bulk/` subfolder found in this compound.")
+    with colB:
+        if st.button("Scan ALL Compounds"):
+            all_bulk, all_defects = [], []
+            try:
+                for cname, cid in compounds.items():
+                    bdf, ddf = scan_compound(cname, cid)
+                    all_bulk.append(bdf)
+                    all_defects.append(ddf)
+                st.session_state["bulk_df"] = pd.concat(all_bulk, ignore_index=True)
+                st.session_state["defects_df"] = pd.concat(all_defects, ignore_index=True)
+                st.success("Full scan complete.")
+            except HttpError as he:
+                st.error(f"Google Drive API error: {he}")
+            except Exception as e:
+                st.error(f"Unexpected error: {e}")
 
-        # 4) Defects
-        st.markdown("### 🧬 Defects")
-        defects = discover_defects(comp_id)
-        if not defects:
-            st.warning("No defect folders found inside this compound.")
-            st.stop()
+# Results
+bulk_df = st.session_state.get("bulk_df", None)
+defects_df = st.session_state.get("defects_df", None)
 
-        st.dataframe(pd.DataFrame({"Defect": list(defects.keys())}), width="stretch")
+if bulk_df is not None or defects_df is not None:
+    st.markdown("### 🧱 Bulk Energy (per compound)")
+    if bulk_df is not None:
+        # Show 'not_found' clearly even when energy is NaN
+        show_bulk = bulk_df.copy()
+        st.dataframe(show_bulk, width="stretch")
+        st.download_button(
+            "Download bulk energies (CSV)",
+            show_bulk.to_csv(index=False).encode(),
+            file_name="bulk_energies.csv",
+        )
+    else:
+        st.info("No bulk data yet. Click a scan button above.")
 
-        defect_sel = st.selectbox("Select a defect", list(defects.keys()))
-        defect_id = defects[defect_sel]
+    st.markdown("### 🧬 Defects — Charge-State Energies")
+    if defects_df is not None:
+        show_def = defects_df.copy()
+        st.dataframe(show_def, width="stretch")
+        st.download_button(
+            "Download defect energies (CSV)",
+            show_def.to_csv(index=False).encode(),
+            file_name="defect_energies.csv",
+        )
+    else:
+        st.info("No defect data yet. Click a scan button above.")
 
-        # 5) Charge states & energies
-        st.markdown("### ⚡ Charge States — Total Energies")
-        charges = discover_charge_states(defect_id)
-        if not charges:
-            st.info("No charge-state subfolders (e.g., q+2, q0, q-1) found.")
-        else:
-            rows = []
-            for qlbl, qid in charges.items():
-                try:
-                    e, src = parse_total_energy_for_folder(qid)
-                    rows.append({"Charge": qlbl, "Total Energy (eV)": e, "Source": src})
-                except Exception as e:
-                    rows.append({"Charge": qlbl, "Total Energy (eV)": None, "Source": f"error: {e}"})
-            df = pd.DataFrame(rows)
-            st.dataframe(df, width="stretch")
-            st.download_button(
-                "Download energies (CSV)",
-                df.to_csv(index=False).encode(),
-                file_name=f"{comp_sel}_{defect_sel}_energies.csv",
-            )
-
-    except HttpError as he:
-        st.error(f"Google Drive API error: {he}")
-    except Exception as e:
-        st.error(f"Unexpected error: {e}")
-
-# ---------- Help / Notes (SAFE: inside Streamlit, not raw Python) ----------
+# ---------- Help ----------
 with st.expander("ℹ️ Help / Expected Folder Structure"):
     st.markdown(
         """
@@ -302,6 +351,6 @@ with st.expander("ℹ️ Help / Expected Folder Structure"):
     - ...
 
 **Energy parsing priority:** `OUTCAR` → `vasprun.xml` → `OSZICAR`.  
-Gzipped files with `.gz` extension are supported.
+If no recognized file is found, the **Source** column will show `not_found`.
 """
     )
