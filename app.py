@@ -1,7 +1,41 @@
-# app.py — dynamic DefectDB browser (Drive)
+# app.py — DefectDB Browser (Google Drive)
+# - Dynamically lists compounds under a root Drive folder
+# - For a compound: lists defect folders (any names)
+# - For a defect: scans all charge-state subfolders (q+2, q0, q-1, ...)
+# - Reads total energy from OUTCAR(.gz) → vasprun.xml(.gz) → OSZICAR(.gz)
+# - Handles Bulk/ if present
+# - Marks missing data clearly: not_found / no_charge_state_folder
+#
+# Requirements:
+#   streamlit
+#   google-api-python-client
+#   google-auth
+#   google-auth-httplib2
+#   pandas
+#   numpy
+#   pymatgen
+#   certifi
+#
+# Secrets (.streamlit/secrets.toml) must contain:
+# [gdrive_service_account]
+# type = "service_account"
+# project_id = "..."
+# private_key_id = "..."
+# private_key = "-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
+# client_email = "..."
+# client_id = "..."
+# ...
+#
+# Notes:
+# - Replaces Streamlit's deprecated use_container_width with width="stretch"
+# - Adds SSL hardening using certifi with httplib2
+# - Adds simple retries around Drive API calls
+
 import io
 import gzip
 import re
+import ssl
+import time
 import tempfile
 from typing import Dict, List, Optional, Tuple
 
@@ -9,14 +43,21 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
+import certifi
+import httplib2
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaIoBaseDownload
 
+# ---------- SSL hardening ----------
+# Some hosts/containers lack a modern CA bundle; point httplib2 at certifi's bundle.
+httplib2.CA_CERTS = certifi.where()
+ssl_ctx = ssl.create_default_context(cafile=certifi.where())
+
 # ---------- Config ----------
 st.set_page_config(page_title="DefectDB Browser (Drive)", layout="wide")
-ROOT_FOLDER_ID_DEFAULT = "1gYTtFpPIRCDWpLBW855RA6XwG0buifbi"  # <- your shared folder
+ROOT_FOLDER_ID_DEFAULT = "1gYTtFpPIRCDWpLBW855RA6XwG0buifbi"  # <- your shared folder ID
 
 # ---------- Auth & Drive client ----------
 @st.cache_resource(show_spinner=False)
@@ -25,22 +66,35 @@ def drive_service():
         dict(st.secrets["gdrive_service_account"]),
         scopes=["https://www.googleapis.com/auth/drive.readonly"],
     )
+    # googleapiclient uses httplib2 under the hood; the global CA bundle is enough.
     return build("drive", "v3", credentials=creds, cache_discovery=False)
+
+# ---------- Retry helper ----------
+def _with_retries(fn, *, tries: int = 3, base_delay: float = 0.8):
+    for k in range(tries):
+        try:
+            return fn()
+        except Exception as e:
+            if k == tries - 1:
+                raise
+            time.sleep(base_delay * (2 ** k))
 
 # ---------- Drive helpers ----------
 def list_children(folder_id: str) -> List[Dict]:
     svc = drive_service()
     q = f"'{folder_id}' in parents and trashed = false"
-    out = []
+    out: List[Dict] = []
     token = None
     while True:
-        resp = svc.files().list(
-            q=q,
-            spaces="drive",
-            fields="nextPageToken, files(id,name,mimeType,modifiedTime,size)",
-            pageToken=token,
-            pageSize=1000,
-        ).execute()
+        def _do():
+            return svc.files().list(
+                q=q,
+                spaces="drive",
+                fields="nextPageToken, files(id,name,mimeType,modifiedTime,size)",
+                pageToken=token,
+                pageSize=1000,
+            ).execute()
+        resp = _with_retries(_do)
         out.extend(resp.get("files", []))
         token = resp.get("nextPageToken")
         if not token:
@@ -54,7 +108,9 @@ def download_bytes(file_id: str) -> bytes:
     downloader = MediaIoBaseDownload(fh, req)
     done = False
     while not done:
-        _, done = downloader.next_chunk()
+        def _do():
+            return downloader.next_chunk()
+        _, done = _with_retries(_do)
     return fh.getvalue()
 
 # ---------- Parsing helpers ----------
@@ -68,8 +124,8 @@ def parse_outcar_energy(raw: bytes) -> Optional[float]:
         with tempfile.NamedTemporaryFile(delete=True, suffix=".OUTCAR") as tmp:
             tmp.write(raw); tmp.flush()
             out = Outcar(tmp.name)
-        if getattr(out, "final_energy", None) is not None:
-            return float(out.final_energy)
+            if getattr(out, "final_energy", None) is not None:
+                return float(out.final_energy)
     except Exception:
         pass
     text = raw.decode(errors="ignore")
@@ -94,8 +150,8 @@ def parse_vasprun_energy(raw: bytes) -> Optional[float]:
         with tempfile.NamedTemporaryFile(delete=True, suffix=".xml") as tmp:
             tmp.write(raw); tmp.flush()
             vr = Vasprun(tmp.name, parse_dos=False, parse_eigen=False)
-        if getattr(vr, "final_energy", None) is not None:
-            return float(vr.final_energy)
+            if getattr(vr, "final_energy", None) is not None:
+                return float(vr.final_energy)
     except Exception:
         return None
     return None
@@ -113,8 +169,8 @@ def parse_oszicar_energy(raw: bytes) -> Optional[float]:
 
 def parse_total_energy_for_folder(folder_id: str) -> Tuple[Optional[float], str]:
     """
-    Look for OUTCAR(.gz) first, then vasprun.xml(.gz), then OSZICAR(.gz) in a folder.
-    Return (energy, source_label).
+    Look for OUTCAR(.gz) first, then vasprun.xml(.gz), then OSZICAR(.gz).
+    Return (energy, source_label). If nothing is found, (None, "not_found").
     """
     kids = list_children(folder_id)
     cand = {k["name"].lower(): k for k in kids}
@@ -129,34 +185,41 @@ def parse_total_energy_for_folder(folder_id: str) -> Tuple[Optional[float], str]
                     return e, nm
         return None, ""
 
+    # Try OUTCAR
     e, src = try_file(["outcar.gz", "outcar"], parse_outcar_energy)
     if e is not None:
         return e, src.upper()
+    # Try vasprun.xml
     e, src = try_file(["vasprun.xml.gz", "vasprun.xml"], parse_vasprun_energy)
     if e is not None:
         return e, src
+    # Try OSZICAR
     e, src = try_file(["oszicar.gz", "oszicar"], parse_oszicar_energy)
     if e is not None:
         return e, src.upper()
+
     return None, "not_found"
 
 # ---------- Discovery logic ----------
 def discover_compounds(root_folder_id: str) -> Dict[str, str]:
-    m = {}
+    """Return {compound_name: folder_id} for all immediate subfolders."""
+    m: Dict[str, str] = {}
     for f in list_children(root_folder_id):
         if f["mimeType"] == "application/vnd.google-apps.folder":
             m[f["name"]] = f["id"]
     return dict(sorted(m.items(), key=lambda x: x[0].lower()))
 
 def discover_defects(compound_folder_id: str) -> Dict[str, str]:
-    m = {}
+    """Return {defect_name: folder_id} for defect subfolders (excluding 'Bulk')."""
+    m: Dict[str, str] = {}
     for f in list_children(compound_folder_id):
         if f["mimeType"] == "application/vnd.google-apps.folder" and f["name"].lower() != "bulk":
             m[f["name"]] = f["id"]
     return dict(sorted(m.items(), key=lambda x: x[0].lower()))
 
 def discover_charge_states(defect_folder_id: str) -> Dict[str, str]:
-    m = {}
+    """Return {charge_label: folder_id} for subfolders (q+2, q0, q-1, ...)."""
+    m: Dict[str, str] = {}
     for f in list_children(defect_folder_id):
         if f["mimeType"] == "application/vnd.google-apps.folder":
             m[f["name"]] = f["id"]
@@ -168,7 +231,7 @@ def discover_charge_states(defect_folder_id: str) -> Dict[str, str]:
         except Exception:
             return None
 
-    # sort: numeric charges first (desc), then unknowns
+    # Sort: numeric charges first (desc), then unknown labels
     return dict(sorted(m.items(), key=lambda x: (parse_q(x[0]) is None, -(parse_q(x[0]) or 0))))
 
 def find_bulk_folder(compound_folder_id: str) -> Optional[str]:
@@ -181,8 +244,8 @@ def find_bulk_folder(compound_folder_id: str) -> Optional[str]:
 def scan_compound(compound_name: str, compound_id: str) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
     Returns:
-      bulk_df: 1-row table (Compound, Energy, Source) or 'not_found'
-      defects_df: rows for each (Defect, Charge, Energy, Source), including not_found cases
+      bulk_df: 1-row table (Compound, Total Energy (eV), Source) or 'not_found'
+      defects_df: rows for each (Compound, Defect, Charge, Total Energy (eV), Source)
     """
     # Bulk
     bulk_id = find_bulk_folder(compound_id)
@@ -205,7 +268,6 @@ def scan_compound(compound_name: str, compound_id: str) -> Tuple[pd.DataFrame, p
     defects = discover_defects(compound_id)
     defect_rows = []
     if not defects:
-        # No defects at all -> emit a placeholder line
         defect_rows.append({
             "Compound": compound_name,
             "Defect": "—",
@@ -265,7 +327,7 @@ with st.sidebar:
         except Exception as e:
             st.error(f"Unexpected error: {e}")
 
-compounds = st.session_state.get("compounds", None)
+compounds = st.session_state.get("compounds")
 if compounds:
     st.subheader("📦 Compounds")
     overview_rows = []
@@ -306,18 +368,16 @@ if compounds:
                 st.error(f"Unexpected error: {e}")
 
 # Results
-bulk_df = st.session_state.get("bulk_df", None)
-defects_df = st.session_state.get("defects_df", None)
+bulk_df = st.session_state.get("bulk_df")
+defects_df = st.session_state.get("defects_df")
 
 if bulk_df is not None or defects_df is not None:
     st.markdown("### 🧱 Bulk Energy (per compound)")
     if bulk_df is not None:
-        # Show 'not_found' clearly even when energy is NaN
-        show_bulk = bulk_df.copy()
-        st.dataframe(show_bulk, width="stretch")
+        st.dataframe(bulk_df, width="stretch")
         st.download_button(
             "Download bulk energies (CSV)",
-            show_bulk.to_csv(index=False).encode(),
+            bulk_df.to_csv(index=False).encode(),
             file_name="bulk_energies.csv",
         )
     else:
@@ -325,11 +385,10 @@ if bulk_df is not None or defects_df is not None:
 
     st.markdown("### 🧬 Defects — Charge-State Energies")
     if defects_df is not None:
-        show_def = defects_df.copy()
-        st.dataframe(show_def, width="stretch")
+        st.dataframe(defects_df, width="stretch")
         st.download_button(
             "Download defect energies (CSV)",
-            show_def.to_csv(index=False).encode(),
+            defects_df.to_csv(index=False).encode(),
             file_name="defect_energies.csv",
         )
     else:
@@ -351,6 +410,6 @@ with st.expander("ℹ️ Help / Expected Folder Structure"):
     - ...
 
 **Energy parsing priority:** `OUTCAR` → `vasprun.xml` → `OSZICAR`.  
-If no recognized file is found, the **Source** column will show `not_found`.
+If no recognized file is found, the **Source** column shows `not_found`.
 """
     )
