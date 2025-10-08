@@ -25,7 +25,7 @@
 #
 # .streamlit/secrets.toml must contain [gdrive_service_account] (service account JSON).
 
-import iof
+import io
 import gzip
 import re
 import ssl
