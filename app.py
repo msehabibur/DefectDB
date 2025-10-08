@@ -45,7 +45,7 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
 
 # ── Config & SSL ─────────────────────────────────────────────────────────────
-st.set_page_config(page_title="DefectDB Browser (Drive) + Analysis", layout="wide")
+st.set_page_config(page_title="DefectDB Studio", layout="wide")
 httplib2.CA_CERTS = certifi.where()
 ssl.create_default_context(cafile=certifi.where())
 
