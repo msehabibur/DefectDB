@@ -1,18 +1,29 @@
-# app.py — DefectDB Browser (Drive) + Auto-built Defect Analysis (global μ CSV supported)
+# app.py — DefectDB Browser (Drive) + Auto-built Defect Analysis
 #
-# WHAT THIS DOES
-# - Browses Google Drive: compounds → defects → charge states
-# - Reads energies from OUTCAR(.gz) → vasprun.xml(.gz) → OSZICAR(.gz)
-# - Loads μ from ROOT/data.csv even if it ONLY contains:
+# FIXED: Charge mapping is STANDARD now:
+#   Charged+N -> pN;  Charged-N -> mN;  Charged0/Neutral -> neut
+#   So Toten_m2 comes from 'Charged-2', Toten_p2 from 'Charged+2', etc.
+#
+# WHAT THIS APP DOES
+# - Browse Google Drive DefectDB: compounds → defects → charge-state folders
+# - Read energies from OUTCAR(.gz) → vasprun.xml(.gz) → OSZICAR(.gz)
+# - Load μ from ROOT/data.csv even if it ONLY has columns like:
 #     V_Cd (Cd-rich), V_Cd (Te-rich), As_Te (Cd-rich), As_Te (Te-rich), Cl_Te (Cd-rich), Cl_Te (Te-rich)
-#   (No Compound/VBM/Bandgap required; defaults: VBM=0.0, gap=1.5)
-# - Builds table with Toten_p2, Toten_p1, Toten_neut, Toten_m1, Toten_m2 (Corr_* = 0.0)
-# - Maps Neutral → Toten_neut; supports your "Charged-1 → +1 → Toten_p1" convention (toggle on)
-# - Chemical potential choices: Cd-rich, Te-rich
-# - Plots formation energy vs Fermi level (lower envelope) and lets you download structures
+#   (No Compound / VBM / Bandgap required; defaults used if missing)
+# - Build a table with Toten_p2, Toten_p1, Toten_neut, Toten_m1, Toten_m2 (Corr_* = 0.0)
+# - Plot defect formation energy vs Fermi level (lower envelope)
 #
-# REQUIREMENTS: streamlit, google-api-python-client, google-auth, google-auth-httplib2,
-#               pandas, numpy, pymatgen, certifi
+# REQUIREMENTS
+#   streamlit
+#   google-api-python-client
+#   google-auth
+#   google-auth-httplib2
+#   pandas
+#   numpy
+#   pymatgen
+#   certifi
+#
+# .streamlit/secrets.toml must contain [gdrive_service_account] (service account JSON).
 
 import io
 import gzip
@@ -33,22 +44,18 @@ from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
 
-# ─────────────────────────────────────────────────────────────────────────────
-# CONFIG & SSL
-# ─────────────────────────────────────────────────────────────────────────────
+# ── Config & SSL ─────────────────────────────────────────────────────────────
 st.set_page_config(page_title="DefectDB Browser (Drive) + Analysis", layout="wide")
 httplib2.CA_CERTS = certifi.where()
 ssl.create_default_context(cafile=certifi.where())
 
 ROOT_FOLDER_ID_DEFAULT = "1gYTtFpPIRCDWpLBW855RA6XwG0buifbi"
 
-# Defaults when VBM/Bandgap not provided anywhere
+# Defaults if VBM/Bandgap not given anywhere
 DEFAULT_VBM = 0.0
 DEFAULT_GAP = 1.5
 
-# ─────────────────────────────────────────────────────────────────────────────
-# DRIVE AUTH
-# ─────────────────────────────────────────────────────────────────────────────
+# ── Auth ─────────────────────────────────────────────────────────────────────
 @st.cache_resource(show_spinner=False)
 def drive_service():
     creds = service_account.Credentials.from_service_account_info(
@@ -66,9 +73,7 @@ def _with_retries(fn, *, tries: int = 3, base_delay: float = 0.8):
                 raise
             time.sleep(base_delay * (2 ** k))
 
-# ─────────────────────────────────────────────────────────────────────────────
-# DRIVE HELPERS
-# ─────────────────────────────────────────────────────────────────────────────
+# ── Drive helpers ────────────────────────────────────────────────────────────
 def list_children(folder_id: str) -> List[Dict]:
     svc = drive_service()
     q = f"'{folder_id}' in parents and trashed = false"
@@ -106,9 +111,7 @@ def find_file_in_folder_by_name(folder_id: str, filename: str) -> Optional[Dict]
             return f
     return None
 
-# ─────────────────────────────────────────────────────────────────────────────
-# VASP PARSERS
-# ─────────────────────────────────────────────────────────────────────────────
+# ── VASP parsers ─────────────────────────────────────────────────────────────
 def maybe_gunzip(name: str, data: bytes) -> bytes:
     return gzip.decompress(data) if name.lower().endswith(".gz") else data
 
@@ -189,9 +192,7 @@ def find_structure_file(folder_id: str) -> Tuple[Optional[bytes], str]:
             return download_bytes(f["id"]), f["name"]
     return None, ""
 
-# ─────────────────────────────────────────────────────────────────────────────
-# DISCOVERY
-# ─────────────────────────────────────────────────────────────────────────────
+# ── Discovery ────────────────────────────────────────────────────────────────
 def discover_compounds(root_folder_id: str) -> Dict[str, str]:
     m = {}
     for f in list_children(root_folder_id):
@@ -216,45 +217,49 @@ def find_bulk_folder(compound_folder_id: str) -> Optional[str]:
             return f["id"]
     return None
 
-# ─────────────────────────────────────────────────────────────────────────────
-# CHARGE LABEL → q (Neutral handled)
-# ─────────────────────────────────────────────────────────────────────────────
-def parse_charge_label_to_q(label: str, *, invert_charged: bool = True) -> Optional[int]:
+# ── Charge label → q (STANDARD mapping; Neutral handled) ─────────────────────
+def parse_charge_label_to_q(label: str) -> Optional[int]:
     """
-    Supports: 'q+2', 'q-1', 'q0', '+1', '-2', '0', 'p1', 'm2',
-              'Charged+2', 'Charged-1', 'Charged0', 'Neutral', 'neut', 'charge+1'
-    invert_charged=True (default): 'Charged-1' → +1 ; 'Charged+2' → +2 ; 'Charged0' → 0
+    STANDARD mapping:
+      'Charged+N' -> +N ; 'Charged-N' -> -N ; 'Charged0' -> 0
+      'Neutral'/'neut'/'q0'/'0' -> 0
+      'pN' -> +N ; 'mN' -> -N
+      'q+N'/'q-N'/'q0' also supported
+      plain '+1'/'-2'/'0' also supported
     """
     s = (label or "").strip().lower()
 
+    # explicit neutral words
     if s in {"neutral", "neut"}:
         return 0
 
+    # pN / mN
     m = re.match(r'^[pm]\s*(\d+)$', s)
     if m:
         n = int(m.group(1))
         return +n if s.startswith('p') else -n
 
+    # q±N or qN
     m = re.match(r'^q\s*([+\-]?\d+)$', s)
     if m:
         return int(m.group(1))
 
+    # plain ±N or 0
     m = re.match(r'^[+\-]?\d+$', s)
     if m:
         return int(s)
 
+    # charged±N or charge±N or charged0
     m = re.match(r'^(charged|charge)\s*([+\-]?)\s*(\d+)$', s)
     if m:
         sign = m.group(2) or "0"
         n = int(m.group(3))
         if n == 0:
             return 0
-        if invert_charged:
-            q = +n if sign == '-' else -n
-        else:
-            q = +n if sign == '+' else -n
-        return q
+        # STANDARD: '+' means +N; '-' means -N
+        return +n if sign == '+' else -n
 
+    # fallback: any integer in string
     m = re.search(r'([+\-]?\d+)', s)
     if m:
         try:
@@ -263,9 +268,7 @@ def parse_charge_label_to_q(label: str, *, invert_charged: bool = True) -> Optio
             return None
     return None
 
-# ─────────────────────────────────────────────────────────────────────────────
-# ROOT/data.csv LOADING (GLOBAL OR PER-COMPOUND)
-# ─────────────────────────────────────────────────────────────────────────────
+# ── data.csv loading (global or per-compound) ────────────────────────────────
 def load_root_params(root_folder_id: str) -> Optional[pd.DataFrame]:
     meta = find_file_in_folder_by_name(root_folder_id, "data.csv")
     if not meta:
@@ -281,53 +284,40 @@ def load_root_params(root_folder_id: str) -> Optional[pd.DataFrame]:
 def get_params_row_for_compound(params_df: Optional[pd.DataFrame], compound: str) -> Tuple[float, float, Optional[pd.Series]]:
     """
     Returns (VBM, gap, row_with_mu_columns_or_None).
-    - If params_df has 'Compound' and rows for it, returns that row (also try 'VBM (eV)'/'Bandgap (eV)').
-    - If not, treats params as GLOBAL μ table (no Compound column) and returns first row; VBM/gap default.
+    - If df has 'Compound' row for this compound, uses that row; tries 'VBM (eV)'/'Bandgap (eV)'.
+    - Else treats df as GLOBAL μ table (no 'Compound') and returns first row; VBM/gap default.
     """
     vbm, gap, row = DEFAULT_VBM, DEFAULT_GAP, None
     if params_df is None or params_df.empty:
         return vbm, gap, row
 
     cols = {c.lower(): c for c in params_df.columns}
-    has_compound = "compound" in cols
-
-    if has_compound:
+    if "compound" in cols:
         cc = cols["compound"]
         rows = params_df[params_df[cc].astype(str) == str(compound)]
         if not rows.empty:
             r = rows.iloc[0]
-            # VBM
             for key in ["VBM (eV)", "VBM"]:
                 if key in r.index:
                     try: vbm = float(r[key]); break
                     except Exception: pass
-            # gap
             for key in ["Bandgap (eV)", "gap"]:
                 if key in r.index:
                     try: gap = float(r[key]); break
                     except Exception: pass
             row = r
             return vbm, gap, row
-        else:
-            # fallback: global (first row)
-            r = params_df.iloc[0]
-            row = r
-            return vbm, gap, row
-    else:
-        # global μ table
-        r = params_df.iloc[0]
-        row = r
-        return vbm, gap, row
+        # fallthrough to global
+    row = params_df.iloc[0]
+    return vbm, gap, row
 
 def mu_from_params_row(row: Optional[pd.Series], defect_name: str, chem_pot: str) -> Optional[float]:
     """
-    Works with your μ-only CSV:
-      'V_Cd (Cd-rich)', 'V_Cd (Te-rich)', 'As_Te (Cd-rich)', ...
-    Returns float or None if not present/NaN.
+    Works with μ-only CSV:
+      'V_Cd (Cd-rich)', 'V_Cd (Te-rich)', ...
     """
     if row is None:
         return None
-    # exact key, but also accept no space before '('
     keys = [
         f"{defect_name} ({chem_pot})",
         f"{defect_name}({chem_pot})",
@@ -342,9 +332,7 @@ def mu_from_params_row(row: Optional[pd.Series], defect_name: str, chem_pot: str
                 continue
     return None
 
-# ─────────────────────────────────────────────────────────────────────────────
-# BUILD CORRECTION/ENERGY TABLE FOR ONE COMPOUND
-# ─────────────────────────────────────────────────────────────────────────────
+# ── Build correction/energy table ────────────────────────────────────────────
 def build_correction_table_for_compound(
     root_id: str,
     compound: str,
@@ -352,23 +340,21 @@ def build_correction_table_for_compound(
     chem_pot: str,  # 'Cd-rich' or 'Te-rich'
     root_params: Optional[pd.DataFrame],
     restrict_defects: Optional[List[str]] = None,
-    invert_charged_labels: bool = True,  # your convention default
 ) -> pd.DataFrame:
     """
-    Returns a DataFrame with columns:
+    Returns DataFrame columns:
       Compound, Defect, Type, Plot, Label, gap, VBM, Toten_pure,
       Toten_p2, Toten_p1, Toten_neut, Toten_m1, Toten_m2,
       Corr_p2, Corr_p1, Corr_neut, Corr_m1, Corr_m2, mu
     """
     vbm, gap, params_row = get_params_row_for_compound(root_params, compound)
 
-    # Bulk energy (Toten_pure)
+    # Bulk energy
     toten_pure, _src = (None, "not_found")
     bulk_id = find_bulk_folder(comp_id)
     if bulk_id:
         toten_pure, _src = parse_total_energy_for_folder(bulk_id)
 
-    # Discover defects
     defects = discover_defects(comp_id)
     names = list(defects.keys())
     if restrict_defects:
@@ -381,7 +367,7 @@ def build_correction_table_for_compound(
 
         vals = {"Toten_p2": np.nan, "Toten_p1": np.nan, "Toten_neut": np.nan, "Toten_m1": np.nan, "Toten_m2": np.nan}
         for qlbl, qid in charges.items():
-            q = parse_charge_label_to_q(qlbl, invert_charged=invert_charged_labels)
+            q = parse_charge_label_to_q(qlbl)
             e, _ = parse_total_energy_for_folder(qid)
             if q is None:
                 continue
@@ -390,6 +376,7 @@ def build_correction_table_for_compound(
             elif q == 0:  vals["Toten_neut"] = e
             elif q == -1: vals["Toten_m1"] = e
             elif q == -2: vals["Toten_m2"] = e
+            # ignore |q| > 2
 
         corr = {"Corr_p2": 0.0, "Corr_p1": 0.0, "Corr_neut": 0.0, "Corr_m1": 0.0, "Corr_m2": 0.0}
         mu_val = mu_from_params_row(params_row, dname, chem_pot)
@@ -410,9 +397,7 @@ def build_correction_table_for_compound(
 
     return pd.DataFrame(rows)
 
-# ─────────────────────────────────────────────────────────────────────────────
-# PLOTTING
-# ─────────────────────────────────────────────────────────────────────────────
+# ── Plotting ─────────────────────────────────────────────────────────────────
 def _coerce_float(x):
     try:
         if x is None: return np.nan
@@ -473,9 +458,7 @@ def plot_formation_energy(df_sub: pd.DataFrame, title: str):
     buf = io.BytesIO(); fig.savefig(buf, format="png", dpi=300, bbox_inches="tight")
     st.download_button("Download plot (PNG)", buf.getvalue(), file_name=f"{title}.png")
 
-# ─────────────────────────────────────────────────────────────────────────────
-# UI
-# ─────────────────────────────────────────────────────────────────────────────
+# ── UI ───────────────────────────────────────────────────────────────────────
 st.title("🧪 DefectDB Browser (Drive) + Auto Analysis")
 
 with st.sidebar:
@@ -489,7 +472,7 @@ with st.sidebar:
             st.session_state["compounds"] = dict(sorted(comps.items(), key=lambda x: x[0].lower()))
             st.session_state["root_params"] = load_root_params(root_id)
             if st.session_state["root_params"] is None:
-                st.warning("ROOT/data.csv not found — using global defaults (VBM=0, gap=1.5, μ from None).")
+                st.warning("ROOT/data.csv not found — using defaults (VBM=0, gap=1.5) and μ=None.")
             else:
                 st.success("Loaded ROOT/data.csv.")
             st.success(f"Found {len(comps)} compound folder(s).")
@@ -501,9 +484,8 @@ root_params = st.session_state.get("root_params")
 
 if compounds:
     st.subheader("📦 Compounds")
-    overview_rows = [{"Compound": c, "Has Bulk": "Yes" if find_bulk_folder(cid) else "No"}
-                     for c, cid in compounds.items()]
-    st.dataframe(pd.DataFrame(overview_rows), width="stretch")
+    overview = [{"Compound": c, "Has Bulk": "Yes" if find_bulk_folder(cid) else "No"} for c, cid in compounds.items()]
+    st.dataframe(pd.DataFrame(overview), width="stretch")
 
     comp_sel = st.selectbox("Select a compound", list(compounds.keys()))
     comp_id = compounds[comp_sel]
@@ -514,10 +496,6 @@ if compounds:
     chosen_defects = st.multiselect("Defects", defect_names, default=defect_names)
 
     chem_pot_choice = st.selectbox("Chemical potential set", ["Cd-rich", "Te-rich"])
-    invert_charged = st.checkbox(
-        "Interpret 'Charged±N' using your convention (e.g., 'Charged-1' → +1 → Toten_p1)",
-        value=True
-    )
 
     colA, colB = st.columns([1,1])
     with colA:
@@ -526,8 +504,7 @@ if compounds:
                 try:
                     table = build_correction_table_for_compound(
                         root_id, comp_sel, comp_id, chem_pot_choice, root_params,
-                        restrict_defects=chosen_defects,
-                        invert_charged_labels=invert_charged
+                        restrict_defects=chosen_defects
                     )
                     if table.empty:
                         st.warning("No rows produced — check folder contents.")
@@ -555,9 +532,10 @@ if compounds:
                 charges = discover_charge_states(did)
                 if not charges:
                     st.info(f"{dname}: no charge-state subfolders."); continue
+                # sort by q (desc)
                 items = []
                 for qlbl, qid in charges.items():
-                    q = parse_charge_label_to_q(qlbl, invert_charged=invert_charged)
+                    q = parse_charge_label_to_q(qlbl)
                     items.append((q, qlbl, qid))
                 items.sort(key=lambda x: (x[0] is None, -(x[0] or 0)))
                 st.markdown(f"**{dname}**")
@@ -576,12 +554,14 @@ if compounds:
 with st.expander("ℹ️ Notes"):
     st.markdown(
         f"""
-**Global μ CSV supported** — If your `data.csv` only has:
-`V_Cd (Cd-rich)`, `V_Cd (Te-rich)`, `As_Te (Cd-rich)`, `As_Te (Te-rich)`, `Cl_Te (Cd-rich)`, `Cl_Te (Te-rich)`,
-the app will use those for **all compounds**. VBM defaults to `{DEFAULT_VBM}`, bandgap defaults to `{DEFAULT_GAP}` if not provided elsewhere.
+**Charge mapping (fixed):**  
+`Charged+2 → Toten_p2`, `Charged+1 → Toten_p1`, `Charged0/Neutral → Toten_neut`, `Charged-1 → Toten_m1`, `Charged-2 → Toten_m2`.
 
-**Neutral mapping:** `Neutral/neut/q0/0/Charged0` → `q=0` → `Toten_neut`.
+**Global μ CSV supported:**  
+If `data.csv` only has μ columns like `V_Cd (Cd-rich)`, `V_Cd (Te-rich)`, `As_Te (Cd-rich)`, `As_Te (Te-rich)`, `Cl_Te (Cd-rich)`, `Cl_Te (Te-rich)`, the app uses those for **all compounds**.  
+Defaults: VBM={DEFAULT_VBM}, Bandgap={DEFAULT_GAP}.
 
-**Your Charged±N rule (toggle):** ON by default → `'Charged-1' → +1 → Toten_p1`.
+**Formation energy:**  
+`E_f(q, EF) = Toten_q − Toten_pure + μ + q·(EF + VBM) + Corr_q` (Corr_q defaults to 0.0).
 """
     )
