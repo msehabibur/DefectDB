@@ -25,7 +25,7 @@
 #
 # .streamlit/secrets.toml must contain [gdrive_service_account] (service account JSON).
 
-import io
+import iof
 import gzip
 import re
 import ssl
@@ -459,7 +459,7 @@ def plot_formation_energy(df_sub: pd.DataFrame, title: str):
     st.download_button("Download plot (PNG)", buf.getvalue(), file_name=f"{title}.png")
 
 # ── UI ───────────────────────────────────────────────────────────────────────
-st.title("🧪 DefectDB Browser (Drive) + Auto Analysis")
+st.title("🧪 DefectDB Studio")
 
 with st.sidebar:
     st.header("Data Source")
