@@ -189,6 +189,51 @@ def find_structure_file(folder_id: str):
 
 
 # ────────────────────────────────────────────────
+# FORMULA FORMATTING
+# ────────────────────────────────────────────────
+def format_compound_latex(compound_name: str) -> str:
+    """
+    Convert compound names to LaTeX format with subscripts.
+
+    Examples:
+        CdSe0.20Te0.80 -> CdSe$_{0.20}$Te$_{0.80}$
+        Cd0.5Zn0.5Te -> Cd$_{0.5}$Zn$_{0.5}$Te
+        CdTe -> CdTe (unchanged)
+    """
+    import re
+    # Pattern to match numbers (including decimals) that should be subscripted
+    pattern = r'(\d+\.?\d*)'
+
+    def replace_numbers(match):
+        num = match.group(1)
+        # Only subscript if it's a decimal or if it makes sense compositionally
+        if '.' in num or (len(num) == 1 and int(num) < 10):
+            return f'$_{{{num}}}$'
+        return num
+
+    # Split by element boundaries (capital letters)
+    parts = re.split(r'(?=[A-Z])', compound_name)
+    formatted_parts = []
+
+    for part in parts:
+        if not part:
+            continue
+        # Find element and numbers
+        match = re.match(r'([A-Z][a-z]?)(.*)$', part)
+        if match:
+            element = match.group(1)
+            rest = match.group(2)
+            if rest and re.match(r'^\d', rest):
+                # Has a number following, subscript it
+                rest = re.sub(pattern, replace_numbers, rest)
+            formatted_parts.append(element + rest)
+        else:
+            formatted_parts.append(part)
+
+    return ''.join(formatted_parts)
+
+
+# ────────────────────────────────────────────────
 # CSV DATA LOADING
 # ────────────────────────────────────────────────
 def load_csv_data(root_folder_id: Optional[str] = None) -> Optional[pd.DataFrame]:

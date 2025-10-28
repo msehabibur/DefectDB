@@ -21,7 +21,7 @@ def _sorted_items(items):
     return tuple()
 
 def render_structures_page(root_folder_id: str = ROOT_FOLDER_ID_DEFAULT):
-    st.header("🔹 Optimized Structures (Google Drive)")
+    st.header("🧱 Optimized Structures (Google Drive)")
     compounds = discover_compounds(root_folder_id)
 
     if not compounds:
@@ -42,27 +42,43 @@ def render_structures_page(root_folder_id: str = ROOT_FOLDER_ID_DEFAULT):
 
     chosen_defects = st.multiselect("Select defects", def_labels, default=def_labels)
 
-    if st.button("List & Download Structures"):
+    # Auto-display structures without requiring button click to prevent restart on download
+    if chosen_defects:
+        st.divider()
+        st.subheader("📥 Available Structures")
+
         for dname in chosen_defects:
-            st.subheader(f"📁 {dname}")
-            defect_id = def_ids.get(dname)
-            if not defect_id:
-                st.warning(f"Defect {dname} not found.")
-                continue
+            with st.expander(f"📁 {dname}", expanded=False):
+                defect_id = def_ids.get(dname)
+                if not defect_id:
+                    st.warning(f"Defect {dname} not found.")
+                    continue
 
-            charges = discover_charge_states(defect_id)
-            if not charges:
-                st.info(f"{dname}: No charge-state folders found.")
-                continue
+                charges = discover_charge_states(defect_id)
+                if not charges:
+                    st.info(f"{dname}: No charge-state folders found.")
+                    continue
 
-            for qlbl, qid in sorted(charges.items(), key=lambda kv: kv[0]):
-                blob, fname = find_structure_file(qid)
-                if blob is None:
-                    st.text(f"{qlbl}: structure not found")
-                else:
-                    st.download_button(
-                        label=f"⬇️ Download {dname} {qlbl} → {fname}",
-                        data=blob,
-                        file_name=f"{comp_sel}_{dname}_{qlbl}_{fname}",
-                        key=f"dl_{dname}_{qlbl}"
-                    )
+                for qlbl, qid in sorted(charges.items(), key=lambda kv: kv[0]):
+                    blob, fname = find_structure_file(qid)
+                    if blob is None:
+                        st.text(f"{qlbl}: structure not found")
+                    else:
+                        col1, col2 = st.columns([3, 1])
+                        with col1:
+                            # Structure preview
+                            try:
+                                structure_text = blob.decode('utf-8')
+                                with st.expander(f"👁️ Preview {qlbl} ({fname})", expanded=False):
+                                    st.code(structure_text, language="text")
+                            except:
+                                st.info(f"{qlbl} - Binary file (preview not available)")
+
+                        with col2:
+                            st.download_button(
+                                label=f"⬇️ {qlbl}",
+                                data=blob,
+                                file_name=f"{comp_sel}_{dname}_{qlbl}_{fname}",
+                                key=f"dl_{comp_sel}_{dname}_{qlbl}",
+                                use_container_width=True
+                            )
