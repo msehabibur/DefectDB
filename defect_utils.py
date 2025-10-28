@@ -1,244 +1,188 @@
-import io
-import os
-import ssl
-import time
-import httplib2
-import pandas as pd
+import io, ssl, time, gzip, httplib2, certifi
+from typing import Dict, List, Optional, Tuple
+
 import numpy as np
-from tqdm import tqdm
-from rich import print
-from uncertainties import ufloat
-from typing import Any, Dict, List, Optional, Tuple
-import matplotlib.pyplot as plt
+import pandas as pd
+from google.oauth2 import service_account
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaIoBaseDownload
 
-# ──────────────────────────────────────────────────────────────
-# ─── APP DEFAULTS ─────────────────────────────────────────────
-# ──────────────────────────────────────────────────────────────
-ROOT_FOLDER_ID_DEFAULT = "1gYTtFpPIRCDWpLBW855RA6XwG0buifbi"  # ✅ your Drive root folder ID
-
-# ──────────────────────────────────────────────────────────────
-# ─── GOOGLE DRIVE SETUP ───────────────────────────────────────
-# ──────────────────────────────────────────────────────────────
-try:
-    from googleapiclient.discovery import build
-    from googleapiclient.http import MediaIoBaseDownload
-    from google.oauth2 import service_account
-except ImportError:
-    build = MediaIoBaseDownload = service_account = None
-    print("[yellow]⚠️ Google API libraries not found. Running in offline mode.[/yellow]")
-
-SERVICE_ACCOUNT_FILE = "service_account.json"
+# ────────────────────────────────────────────────
+# CONFIG
+# ────────────────────────────────────────────────
+ROOT_FOLDER_ID_DEFAULT = "1gYTtFpPIRCDWpLBW855RA6XwG0buifbi"
 SCOPES = ["https://www.googleapis.com/auth/drive.readonly"]
 
-drive_service = None
-try:
-    if service_account and os.path.exists(SERVICE_ACCOUNT_FILE):
-        credentials = service_account.Credentials.from_service_account_file(
-            SERVICE_ACCOUNT_FILE, scopes=SCOPES
-        )
-        drive_service = build("drive", "v3", credentials=credentials)
-        print("[green]✅ Google Drive service initialized successfully.[/green]")
-    else:
-        print("[red]❌ service_account.json not found — please upload it.[/red]")
-except Exception as e:
-    print(f"[red]⚠️ Could not initialize Google Drive API: {e}[/red]")
+httplib2.CA_CERTS = certifi.where()
+ssl.create_default_context(cafile=certifi.where())
 
-# ──────────────────────────────────────────────────────────────
-# ─── RETRY HELPER ─────────────────────────────────────────────
-# ──────────────────────────────────────────────────────────────
-def _with_retries(fn, *, tries: int = 3, base_delay: float = 0.8):
-    for attempt in range(tries):
+# ────────────────────────────────────────────────
+# GOOGLE DRIVE SERVICE
+# ────────────────────────────────────────────────
+def drive_service():
+    """Authenticate using Streamlit secrets or service_account.json."""
+    import streamlit as st
+    try:
+        if "gdrive_service_account" in st.secrets:
+            creds = service_account.Credentials.from_service_account_info(
+                dict(st.secrets["gdrive_service_account"]), scopes=SCOPES
+            )
+        else:
+            creds = service_account.Credentials.from_service_account_file(
+                "service_account.json", scopes=SCOPES
+            )
+        return build("drive", "v3", credentials=creds, cache_discovery=False)
+    except Exception as e:
+        st.warning(f"⚠️ Google Drive not initialized: {e}")
+        return None
+
+
+# ────────────────────────────────────────────────
+# RETRY WRAPPER
+# ────────────────────────────────────────────────
+def _with_retries(fn, tries: int = 3, base_delay: float = 0.8):
+    for k in range(tries):
         try:
             return fn()
-        except Exception as e:
-            if attempt == tries - 1:
+        except Exception:
+            if k == tries - 1:
                 raise
-            wait_time = base_delay * (2 ** attempt)
-            print(f"[yellow]Retry {attempt+1}/{tries}: {e} → waiting {wait_time:.1f}s[/yellow]")
-            time.sleep(wait_time)
+            time.sleep(base_delay * (2 ** k))
 
-# ──────────────────────────────────────────────────────────────
-# ─── DOWNLOAD STRUCTURE FROM DRIVE ────────────────────────────
-# ──────────────────────────────────────────────────────────────
-def download_bytes(file_id):
-    """Download a file from Google Drive using secure HTTPS client."""
-    if drive_service is None:
-        print("[yellow]⚠️ Skipping Google Drive download (no credentials).[/yellow]")
-        return b"", "mock_structure.cif"
 
-    os.environ.pop("HTTPS_PROXY", None)
-    os.environ.pop("HTTP_PROXY", None)
+# ────────────────────────────────────────────────
+# DRIVE HELPERS
+# ────────────────────────────────────────────────
+def list_children(folder_id: str) -> List[Dict]:
+    svc = drive_service()
+    if svc is None:
+        return []
+    q = f"'{folder_id}' in parents and trashed=false"
+    files, token = [], None
+    while True:
+        def _do():
+            return svc.files().list(
+                q=q,
+                spaces="drive",
+                fields="nextPageToken, files(id,name,mimeType,modifiedTime,size)",
+                pageToken=token,
+                pageSize=1000,
+            ).execute()
+        resp = _with_retries(_do)
+        files.extend(resp.get("files", []))
+        token = resp.get("nextPageToken")
+        if not token:
+            break
+    return files
 
-    ssl_context = ssl.create_default_context()
-    ssl_context.minimum_version = ssl.TLSVersion.TLSv1_2
 
-    http = httplib2.Http(timeout=60, ca_certs=ssl.get_default_verify_paths().cafile)
-    http.disable_ssl_certificate_validation = False
-
-    request = drive_service.files().get_media(fileId=file_id)
-    file_handle = io.BytesIO()
-    downloader = MediaIoBaseDownload(file_handle, request)
-
+def download_bytes(file_id: str) -> bytes:
+    svc = drive_service()
+    if svc is None:
+        return b""
+    req = svc.files().get_media(fileId=file_id)
+    fh = io.BytesIO()
+    downloader = MediaIoBaseDownload(fh, req)
     done = False
     while not done:
         def _do():
-            return downloader.next_chunk(http=http)
+            return downloader.next_chunk()
         _, done = _with_retries(_do)
-
-    return file_handle.getvalue()
-
-# ──────────────────────────────────────────────────────────────
-# ─── DISCOVERY HELPERS (RETURN DICTS) ─────────────────────────
-# ──────────────────────────────────────────────────────────────
-def discover_compounds(root_folder_id: Optional[str] = None) -> Dict[str, str]:
-    """Return dict of compound name → folder ID."""
-    if drive_service is None:
-        return {
-            "CdTe": "mock_id_CdTe",
-            "CdSeTe": "mock_id_CdSeTe",
-            "CdZnTe": "mock_id_CdZnTe"
-        }
-
-    folder_id = root_folder_id or ROOT_FOLDER_ID_DEFAULT
-    results = drive_service.files().list(
-        q=f"'{folder_id}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false",
-        fields="files(id, name)",
-    ).execute()
-    return {f["name"]: f["id"] for f in results.get("files", [])}
+    return fh.getvalue()
 
 
-def discover_defects(compound_folder_id: Optional[str] = None) -> Dict[str, str]:
-    """Return dict of defect name → folder ID."""
-    if drive_service is None:
-        return {
-            "V_Cd": "mock_id_V_Cd",
-            "V_Te": "mock_id_V_Te",
-            "As_Te": "mock_id_As_Te",
-            "Cl_Te": "mock_id_Cl_Te"
-        }
-
-    results = drive_service.files().list(
-        q=f"'{compound_folder_id}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false",
-        fields="files(id, name)",
-    ).execute()
-    return {f["name"]: f["id"] for f in results.get("files", [])}
-
-
-def discover_charge_states(defect_folder_id: Optional[str] = None) -> Dict[str, str]:
-    """Return dict of charge label → folder ID."""
-    if drive_service is None:
-        return {
-            "q=0": "mock_id_q0",
-            "q=+1": "mock_id_q+1",
-            "q=-1": "mock_id_q-1",
-            "q=+2": "mock_id_q+2",
-            "q=-2": "mock_id_q-2",
-        }
-
-    results = drive_service.files().list(
-        q=f"'{defect_folder_id}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false",
-        fields="files(id, name)",
-    ).execute()
-    return {f["name"]: f["id"] for f in results.get("files", [])}
-
-# ──────────────────────────────────────────────────────────────
-# ─── PARSE CHARGE LABEL → INTEGER ─────────────────────────────
-# ──────────────────────────────────────────────────────────────
-def parse_charge_label_to_q(label: str) -> Optional[int]:
-    """Parse folder/label like 'q=+1', 'charge_minus_2', 'q0' → integer."""
-    label = label.lower().strip()
-    if label.startswith("q="):
-        try:
-            return int(label.replace("q=", "").replace("+", ""))
-        except ValueError:
-            return None
-    if "plus" in label:
-        try:
-            return int(label.split("plus_")[-1])
-        except ValueError:
-            return None
-    if "minus" in label:
-        try:
-            return -int(label.split("minus_")[-1])
-        except ValueError:
-            return None
-    if label in ["q0", "charge0", "neutral"]:
-        return 0
+def find_file_in_folder_by_name(folder_id: str, filename: str) -> Optional[Dict]:
+    flc = filename.lower()
+    for f in list_children(folder_id):
+        if f["mimeType"] != "application/vnd.google-apps.folder" and f["name"].lower() == flc:
+            return f
     return None
 
-# ──────────────────────────────────────────────────────────────
-# ─── FIND STRUCTURE FILE ──────────────────────────────────────
-# ──────────────────────────────────────────────────────────────
+
+# ────────────────────────────────────────────────
+# DISCOVERY HELPERS (RETURN DICTS)
+# ────────────────────────────────────────────────
+def discover_compounds(root_folder_id: Optional[str] = None) -> Dict[str, str]:
+    root_id = root_folder_id or ROOT_FOLDER_ID_DEFAULT
+    return {
+        f["name"]: f["id"]
+        for f in list_children(root_id)
+        if f["mimeType"] == "application/vnd.google-apps.folder"
+    }
+
+
+def discover_defects(compound_folder_id: str) -> Dict[str, str]:
+    return {
+        f["name"]: f["id"]
+        for f in list_children(compound_folder_id)
+        if f["mimeType"] == "application/vnd.google-apps.folder" and f["name"].lower() != "bulk"
+    }
+
+
+def discover_charge_states(defect_folder_id: str) -> Dict[str, str]:
+    return {
+        f["name"]: f["id"]
+        for f in list_children(defect_folder_id)
+        if f["mimeType"] == "application/vnd.google-apps.folder"
+    }
+
+
+def find_bulk_folder(compound_folder_id: str) -> Optional[str]:
+    for f in list_children(compound_folder_id):
+        if f["mimeType"] == "application/vnd.google-apps.folder" and f["name"].lower() == "bulk":
+            return f["id"]
+    return None
+
+
+# ────────────────────────────────────────────────
+# CHARGE PARSER
+# ────────────────────────────────────────────────
+def parse_charge_label_to_q(label: str) -> Optional[int]:
+    s = (label or "").strip().lower()
+    if s in {"neutral", "neut"}:
+        return 0
+    if s.startswith("charged+"):
+        return int(s.replace("charged+", ""))
+    if s.startswith("charged-"):
+        return -int(s.replace("charged-", ""))
+    if s.startswith("q+"):
+        return int(s.replace("q+", ""))
+    if s.startswith("q-"):
+        return -int(s.replace("q-", ""))
+    if s in {"0", "q0", "neutral"}:
+        return 0
+    if s.startswith("m"):
+        return -int(s[1:])
+    if s.startswith("p"):
+        return int(s[1:])
+    # fallback: extract integer
+    import re
+    m = re.search(r"([+\-]?\d+)", s)
+    if m:
+        try:
+            return int(m.group(1))
+        except:
+            return None
+    return None
+
+
+# ────────────────────────────────────────────────
+# STRUCTURE FILES
+# ────────────────────────────────────────────────
 STRUCTURE_FILE_PRIORITY = [
-    "CONTCAR", "POSCAR", "Relaxed.cif", "Final.cif", "structure.cif", "optimized.cif",
+    "CONTCAR", "POSCAR", "Relaxed.cif", "Final.cif", "structure.cif", "optimized.cif"
 ]
 
 def find_structure_file(folder_id: str):
-    """Find preferred structure file in a Drive folder."""
-    if drive_service is None:
-        print(f"[yellow]⚠️ Skipping structure lookup for folder_id={folder_id} (mock mode).[/yellow]")
-        return b"", "mock_structure.cif"
-
-    results = drive_service.files().list(
-        q=f"'{folder_id}' in parents and trashed=false",
-        fields="files(id, name)"
-    ).execute()
-
-    files = results.get("files", [])
-    files_by_name = {f["name"]: f for f in files}
-
+    files = list_children(folder_id)
+    byname = {f["name"].lower(): f for f in files}
     for candidate in STRUCTURE_FILE_PRIORITY:
-        for name, meta in files_by_name.items():
-            if name.lower() == candidate.lower():
-                return download_bytes(meta["id"]), name
-
-    if files_by_name:
-        first = sorted(files_by_name.items())[0][1]
-        return download_bytes(first["id"]), first["name"]
-
-    raise FileNotFoundError(f"No structure file found in folder {folder_id}")
-
-# ──────────────────────────────────────────────────────────────
-# ─── DATA LOADING UTIL ────────────────────────────────────────
-# ──────────────────────────────────────────────────────────────
-def load_csv_data(path: str) -> pd.DataFrame:
-    try:
-        df = pd.read_csv(path)
-        print(f"[green]Loaded CSV file successfully: {path}[/green]")
-        return df
-    except Exception as e:
-        print(f"[red]Failed to load CSV file: {e}[/red]")
-        return pd.DataFrame()
-
-# ──────────────────────────────────────────────────────────────
-# ─── PLOTTING UTIL ────────────────────────────────────────────
-# ──────────────────────────────────────────────────────────────
-def plot_defect_levels(defect_data: pd.DataFrame, title: str = "Defect Formation Energy"):
-    """Plot defect formation energies (Y = 0–5 eV, large fonts)."""
-    plt.figure(figsize=(10, 6))
-    colors = plt.cm.tab10(np.arange(len(defect_data)))
-
-    for i, (_, row) in enumerate(defect_data.iterrows()):
-        plt.plot(row["charge_states"], row["energies"], "-o", color=colors[i], label=row["defect"])
-
-    plt.title(title, fontsize=18)
-    plt.xlabel("Fermi Level (eV)", fontsize=16)
-    plt.ylabel("Formation Energy (eV)", fontsize=16)
-    plt.xticks(fontsize=14)
-    plt.yticks(fontsize=14)
-    plt.ylim(0, 5)
-    plt.legend(fontsize=12)
-    plt.grid(True, linestyle="--", alpha=0.6)
-    plt.tight_layout()
-    plt.show()
-
-# ──────────────────────────────────────────────────────────────
-# ─── TEST ─────────────────────────────────────────────────────
-# ──────────────────────────────────────────────────────────────
-if __name__ == "__main__":
-    df = pd.DataFrame({
-        "defect": ["V_Cd", "V_Te"],
-        "charge_states": [np.linspace(0, 1, 5), np.linspace(0, 1, 5)],
-        "energies": [np.random.uniform(0, 4, 5), np.random.uniform(0, 4, 5)]
-    })
-    plot_defect_levels(df)
+        if candidate.lower() in byname:
+            f = byname[candidate.lower()]
+            data = download_bytes(f["id"])
+            return data, f["name"]
+    for f in files:
+        if f["name"].lower().endswith(".cif"):
+            data = download_bytes(f["id"])
+            return data, f["name"]
+    return None, ""
