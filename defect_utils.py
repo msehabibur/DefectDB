@@ -9,24 +9,35 @@ from tqdm import tqdm
 from rich import print
 from uncertainties import ufloat
 from typing import Any, Dict, List, Optional, Tuple
-from googleapiclient.discovery import build
-from googleapiclient.http import MediaIoBaseDownload
-from google.oauth2 import service_account
 import matplotlib.pyplot as plt
+
+# ──────────────────────────────────────────────────────────────
+# ─── APP DEFAULTS ─────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────
+ROOT_FOLDER_ID_DEFAULT = None  # placeholder so app.py import succeeds
 
 # ──────────────────────────────────────────────────────────────
 # ─── GOOGLE DRIVE SETUP ───────────────────────────────────────
 # ──────────────────────────────────────────────────────────────
 
-SERVICE_ACCOUNT_FILE = "service_account.json"  # Update this if needed
-SCOPES = ["https://www.googleapis.com/auth/drive.readonly"]
-
 try:
-    credentials = service_account.Credentials.from_service_account_file(
-        SERVICE_ACCOUNT_FILE, scopes=SCOPES
-    )
-    drive_service = build("drive", "v3", credentials=credentials)
-    print("[green]✅ Google Drive service initialized successfully.[/green]")
+    from googleapiclient.discovery import build
+    from googleapiclient.http import MediaIoBaseDownload
+    from google.oauth2 import service_account
+
+    SERVICE_ACCOUNT_FILE = "service_account.json"
+    SCOPES = ["https://www.googleapis.com/auth/drive.readonly"]
+
+    if os.path.exists(SERVICE_ACCOUNT_FILE):
+        credentials = service_account.Credentials.from_service_account_file(
+            SERVICE_ACCOUNT_FILE, scopes=SCOPES
+        )
+        drive_service = build("drive", "v3", credentials=credentials)
+        print("[green]✅ Google Drive service initialized successfully.[/green]")
+    else:
+        print("[yellow]⚠️ service_account.json not found; continuing without Drive access.[/yellow]")
+        drive_service = None
+
 except Exception as e:
     print(f"[red]⚠️ Could not initialize Google Drive API: {e}[/red]")
     drive_service = None
@@ -54,8 +65,8 @@ def download_bytes(file_id):
     """
     Download a file from Google Drive using a clean HTTPS client with proper SSL.
     """
-    import io, os, ssl, httplib2
-    from googleapiclient.http import MediaIoBaseDownload
+    if drive_service is None:
+        raise RuntimeError("Google Drive API not initialized (missing credentials).")
 
     # Remove proxy interference
     os.environ.pop("HTTPS_PROXY", None)
@@ -100,6 +111,9 @@ def find_structure_file(folder_id: str):
     """
     Find the preferred structure file (CONTCAR, POSCAR, etc.) in a given Drive folder.
     """
+    if drive_service is None:
+        raise RuntimeError("Google Drive API not initialized (missing credentials).")
+
     results = (
         drive_service.files()
         .list(q=f"'{folder_id}' in parents and trashed=false", fields="files(id, name)")
@@ -121,6 +135,22 @@ def find_structure_file(folder_id: str):
     raise FileNotFoundError(f"No structure file found in folder {folder_id}")
 
 # ──────────────────────────────────────────────────────────────
+# ─── DATA LOADING UTILS (for app.py imports) ──────────────────
+# ──────────────────────────────────────────────────────────────
+
+def load_csv_data(path: str) -> pd.DataFrame:
+    """
+    Safely load CSV data for defect plots or energy tables.
+    """
+    try:
+        df = pd.read_csv(path)
+        print(f"[green]Loaded CSV file successfully: {path}[/green]")
+        return df
+    except Exception as e:
+        print(f"[red]Failed to load CSV file: {e}[/red]")
+        return pd.DataFrame()
+
+# ──────────────────────────────────────────────────────────────
 # ─── PLOTTING UTIL ────────────────────────────────────────────
 # ──────────────────────────────────────────────────────────────
 
@@ -138,11 +168,11 @@ def plot_defect_levels(defect_data: pd.DataFrame, title: str = "Defect Formation
     plt.xlabel("Fermi Level (eV)", fontsize=16)
     plt.ylabel("Formation Energy (eV)", fontsize=16)
 
-    # ✅ Increase font sizes for ticks
+    # ✅ Increase tick font sizes
     plt.xticks(fontsize=14)
     plt.yticks(fontsize=14)
 
-    # ✅ Limit Y-axis from 0 to 5 eV
+    # ✅ Limit Y-axis to 0–5 eV
     plt.ylim(0, 5)
 
     plt.legend(fontsize=12)
@@ -151,10 +181,11 @@ def plot_defect_levels(defect_data: pd.DataFrame, title: str = "Defect Formation
     plt.show()
 
 # ──────────────────────────────────────────────────────────────
-# ─── EXAMPLE DATA TEST (SAFE TO REMOVE IN PRODUCTION) ─────────
+# ─── EXAMPLE TEST (safe to remove) ─────────────────────────────
 # ──────────────────────────────────────────────────────────────
+
 if __name__ == "__main__":
-    # Dummy example for testing
+    # Dummy data to test plotting
     df = pd.DataFrame({
         "defect": ["V_Cd", "V_Te"],
         "charge_states": [np.linspace(0, 1, 5), np.linspace(0, 1, 5)],
