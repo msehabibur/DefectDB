@@ -5,7 +5,8 @@ import ssl
 import httplib2
 import certifi
 
-# Import the plotter page
+# Import our new modules
+from defect_utils import load_excel_data, ROOT_FOLDER_ID_DEFAULT
 from page_plotter import render_plotter_page
 
 # ── Config & SSL ─────────────────────────────────────────────────────────────
@@ -15,20 +16,31 @@ ssl.create_default_context(cafile=certifi.where())
 
 st.title("🧪 Defect Formation Energy Plotter")
 
-# ── File Uploader ────────────────────────────────────────────────────────────
-uploaded_file = st.file_uploader("Upload your Defect Data File (e.g., cdsete_defect_library_generation_pbesol.xlsx)", type=["xlsx", "xls"])
+# ── Sidebar (Global Controls) ────────────────────────────────────────────────
+with st.sidebar:
+    st.header("Data Source")
+    root_id = st.text_input("Root Folder ID", value=ROOT_FOLDER_ID_DEFAULT)
+    
+    if st.button("Scan Root for Excel File"):
+        with st.spinner("Scanning Google Drive for 'cdsete_defect_library_generation_pbesol.xlsx'..."):
+            try:
+                data = load_excel_data(root_id)
+                if data is None:
+                    st.error("File 'cdsete_defect_library_generation_pbesol.xlsx' not found in root.")
+                    st.session_state["defect_data"] = None
+                else:
+                    st.success("Loaded defect data from Excel file.")
+                    st.session_state["defect_data"] = data
+            
+            except Exception as e:
+                st.error(f"Error loading file: {e}")
+                st.session_state["defect_data"] = None
 
-if uploaded_file is not None:
-    try:
-        # Read the uploaded Excel file
-        data = pd.read_excel(uploaded_file)
-        st.success("File loaded successfully!")
-        
-        # Render the main plotter interface
-        render_plotter_page(data)
-        
-    except Exception as e:
-        st.error(f"Error reading file: {e}")
-        st.exception(e)
+# ── Main Page (Plotter) ──────────────────────────────────────────────────────
+defect_data = st.session_state.get("defect_data")
+
+if defect_data is not None:
+    # We have data, so render the plotter UI
+    render_plotter_page(defect_data)
 else:
-    st.info("Please upload your defect data file to begin.")
+    st.info("Scan a Root Folder ID in the sidebar to load the defect data file.")
