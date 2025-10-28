@@ -22,11 +22,12 @@ with st.sidebar:
     root_id = st.text_input("Root Folder ID", value=ROOT_FOLDER_ID_DEFAULT)
     
     if st.button("Scan Root for Excel File"):
-        with st.spinner("Scanning Google Drive for 'cdsete_defect_library_generation_pbesol.xlsx'..."):
+        # --- FILENAME UPDATED HERE ---
+        with st.spinner("Scanning Google Drive for 'cdsete_defect_library_generation_pbesol'..."):
             try:
                 data = load_excel_data(root_id)
                 if data is None:
-                    st.error("File 'cdsete_defect_library_generation_pbesol.xlsx' not found in root.")
+                    st.error("File 'cdsete_defect_library_generation_pbesol' not found in root.")
                     st.session_state["defect_data"] = None
                 else:
                     st.success("Loaded defect data from Excel file.")
