@@ -102,33 +102,32 @@ with tab_about:
 
     with st.expander("📁 **1️⃣ Data Integration**", expanded=True):
         st.markdown("""
-        - The app connects to a specified **Google Drive folder** and automatically searches for  
-          the dataset file `cdsete_defect_library_generation_pbesol.csv`.
-        - Once loaded, the data is cached for faster re-rendering and interactive exploration.
+        - Connects to a specified **Google Drive folder** and searches for  
+          `cdsete_defect_library_generation_pbesol.csv`.  
+        - Once loaded, the data is cached for fast, interactive exploration.
         """)
 
     with st.expander("📊 **2️⃣ Formation Energy Visualization**", expanded=True):
         st.markdown("""
-        - Each defect entry includes charge states, total energies, and reference chemical potentials.  
-        - The plotter enables visualization of **formation energy vs Fermi level** diagrams with  
-          automatic highlighting of transition levels.  
-        - The viewer supports comparison across **multiple compositions** (e.g., CdSeₓTe₁₋ₓ).
+        - Each entry includes charge states, total energies, and reference chemical potentials.  
+        - Visualize **formation energy vs Fermi level** diagrams with transition-level markers.  
+        - Supports comparison across **multiple compositions** (e.g., CdSeₓTe₁₋ₓ).
         """)
 
     with st.expander("🧱 **3️⃣ Structure Browser**", expanded=True):
         st.markdown("""
-        - Access **relaxed POSCAR/CIF files** of bulk and defect structures directly from Google Drive.  
-        - Visualize optimized geometries, defect complexes, and compare structural distortions.
+        - Access **relaxed POSCAR/CIF files** of bulk and defect structures directly from Drive.  
+        - Compare geometrical distortions and visualize defect complexes.
         """)
 
     st.markdown("---")
     st.header("💡 Purpose and Vision")
     st.markdown("""
-    **DefectDB Studio** is designed to:  
-    - Democratize access to curated defect datasets for **semiconductors** and **chalcogenides**.  
-    - Accelerate discovery of **defect-tolerant materials** for renewable-energy applications.  
-    - Provide **AI-ready exports** for downstream machine-learning workflows.  
-    - Foster **FAIR (Findable, Accessible, Interoperable, Reusable)** data practices in defect informatics.
+    **DefectDB Studio** aims to   
+    - democratize access to curated defect datasets for **semiconductors** and **chalcogenides**,  
+    - accelerate discovery of **defect-tolerant materials** for renewable energy,  
+    - provide **AI-ready exports** for machine-learning workflows, and  
+    - promote **FAIR data principles** (Findable, Accessible, Interoperable, Reusable).
     """)
 
 # ─── DATA TAB ─────────────────────────────────────────────────────────────────
@@ -136,7 +135,7 @@ with tab_data:
     st.header("📂 Loaded Defect Dataset")
     if defect_data is not None:
         st.success("✅ Dataset successfully loaded!")
-        st.dataframe(defect_data.head(30), use_container_width=True)
+        st.dataframe(defect_data.head(30), width="stretch")
         st.caption(f"Total records: **{len(defect_data):,}**")
     else:
         st.warning("Please scan a Google Drive folder from the sidebar to load defect data.")
