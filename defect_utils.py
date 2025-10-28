@@ -61,9 +61,7 @@ def _with_retries(fn, *, tries: int = 3, base_delay: float = 0.8):
 # ─── DOWNLOAD STRUCTURE FROM DRIVE ────────────────────────────
 # ──────────────────────────────────────────────────────────────
 def download_bytes(file_id):
-    """
-    Download a file from Google Drive using secure HTTPS client.
-    """
+    """Download a file from Google Drive using secure HTTPS client."""
     if drive_service is None:
         print("[yellow]⚠️ Skipping Google Drive download (no credentials).[/yellow]")
         return b"", "mock_structure.cif"
@@ -90,73 +88,82 @@ def download_bytes(file_id):
     return file_handle.getvalue()
 
 # ──────────────────────────────────────────────────────────────
-# ─── DISCOVERY HELPERS (used by page_structures) ──────────────
+# ─── DISCOVERY HELPERS (RETURN DICTS) ─────────────────────────
 # ──────────────────────────────────────────────────────────────
-def discover_compounds(root_folder_id: Optional[str] = None) -> List[str]:
-    """Return list of compound folders under root."""
+def discover_compounds(root_folder_id: Optional[str] = None) -> Dict[str, str]:
+    """Return dict of compound name → folder ID."""
     if drive_service is None:
-        return ["CdTe", "CdSeTe", "CdZnTe"]
+        return {
+            "CdTe": "mock_id_CdTe",
+            "CdSeTe": "mock_id_CdSeTe",
+            "CdZnTe": "mock_id_CdZnTe"
+        }
 
     folder_id = root_folder_id or ROOT_FOLDER_ID_DEFAULT
     results = drive_service.files().list(
         q=f"'{folder_id}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false",
         fields="files(id, name)",
     ).execute()
-    return [f["name"] for f in results.get("files", [])]
+    return {f["name"]: f["id"] for f in results.get("files", [])}
 
-def discover_defects(compound_folder_id: Optional[str] = None) -> List[str]:
-    """Return defect folders under a compound folder."""
+
+def discover_defects(compound_folder_id: Optional[str] = None) -> Dict[str, str]:
+    """Return dict of defect name → folder ID."""
     if drive_service is None:
-        return ["V_Cd", "V_Te", "As_Te", "Cl_Te"]
+        return {
+            "V_Cd": "mock_id_V_Cd",
+            "V_Te": "mock_id_V_Te",
+            "As_Te": "mock_id_As_Te",
+            "Cl_Te": "mock_id_Cl_Te"
+        }
 
     results = drive_service.files().list(
         q=f"'{compound_folder_id}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false",
         fields="files(id, name)",
     ).execute()
-    return [f["name"] for f in results.get("files", [])]
+    return {f["name"]: f["id"] for f in results.get("files", [])}
 
-def discover_charge_states(defect_folder_id: Optional[str] = None) -> List[str]:
-    """Return charge-state subfolders under a defect folder."""
+
+def discover_charge_states(defect_folder_id: Optional[str] = None) -> Dict[str, str]:
+    """Return dict of charge label → folder ID."""
     if drive_service is None:
-        return ["q=0", "q=+1", "q=-1", "q=+2", "q=-2"]
+        return {
+            "q=0": "mock_id_q0",
+            "q=+1": "mock_id_q+1",
+            "q=-1": "mock_id_q-1",
+            "q=+2": "mock_id_q+2",
+            "q=-2": "mock_id_q-2",
+        }
 
     results = drive_service.files().list(
         q=f"'{defect_folder_id}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false",
         fields="files(id, name)",
     ).execute()
-    return [f["name"] for f in results.get("files", [])]
+    return {f["name"]: f["id"] for f in results.get("files", [])}
 
 # ──────────────────────────────────────────────────────────────
 # ─── PARSE CHARGE LABEL → INTEGER ─────────────────────────────
 # ──────────────────────────────────────────────────────────────
 def parse_charge_label_to_q(label: str) -> Optional[int]:
-    """
-    Parse a folder or label name like 'q=+1', 'charge_minus_2', 'q0' into an integer.
-    Returns None if it cannot parse.
-    """
+    """Parse folder/label like 'q=+1', 'charge_minus_2', 'q0' → integer."""
     label = label.lower().strip()
-
     if label.startswith("q="):
         try:
             return int(label.replace("q=", "").replace("+", ""))
         except ValueError:
             return None
-
     if "plus" in label:
         try:
             return int(label.split("plus_")[-1])
         except ValueError:
             return None
-
     if "minus" in label:
         try:
             return -int(label.split("minus_")[-1])
         except ValueError:
             return None
-
     if label in ["q0", "charge0", "neutral"]:
         return 0
-
     return None
 
 # ──────────────────────────────────────────────────────────────
@@ -169,7 +176,7 @@ STRUCTURE_FILE_PRIORITY = [
 def find_structure_file(folder_id: str):
     """Find preferred structure file in a Drive folder."""
     if drive_service is None:
-        print(f"[yellow]⚠️ Skipping structure lookup for folder_id={folder_id} (no Drive access).[/yellow]")
+        print(f"[yellow]⚠️ Skipping structure lookup for folder_id={folder_id} (mock mode).[/yellow]")
         return b"", "mock_structure.cif"
 
     results = drive_service.files().list(
