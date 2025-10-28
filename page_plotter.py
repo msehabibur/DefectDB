@@ -5,7 +5,6 @@ import matplotlib
 import numpy as np
 import pandas as pd
 import streamlit as st
-from defect_utils import format_compound_latex
 
 # Use a headless backend for Streamlit environments
 matplotlib.use("Agg", force=True)
@@ -27,6 +26,45 @@ def _coerce_float(x):
     except Exception:
         return np.nan
 
+def _format_compound_latex(compound_name: str) -> str:
+    """Convert compound names to LaTeX format with subscripts."""
+    import re
+
+    if not compound_name:
+        return compound_name
+
+    try:
+        pattern = r'(\d+\.?\d*)'
+
+        def replace_numbers(match):
+            num = match.group(1)
+            try:
+                if '.' in num or (len(num) == 1 and int(num) < 10):
+                    return f'$_{{{num}}}$'
+            except (ValueError, TypeError):
+                pass
+            return num
+
+        parts = re.split(r'(?=[A-Z])', compound_name)
+        formatted_parts = []
+
+        for part in parts:
+            if not part:
+                continue
+            match = re.match(r'([A-Z][a-z]?)(.*)$', part)
+            if match:
+                element = match.group(1)
+                rest = match.group(2)
+                if rest and re.match(r'^\d', rest):
+                    rest = re.sub(pattern, replace_numbers, rest)
+                formatted_parts.append(element + rest)
+            else:
+                formatted_parts.append(part)
+
+        return ''.join(formatted_parts)
+    except Exception:
+        return compound_name
+
 # ── Plotting Function ────────────────────────────────────────────────────────
 def plot_formation_energy(df_to_plot: pd.DataFrame, compound_name: str, chem_pot: str, chem_pot_col: str):
     """
@@ -46,7 +84,7 @@ def plot_formation_energy(df_to_plot: pd.DataFrame, compound_name: str, chem_pot
     gap = DEFAULT_GAP if (np.isnan(gap) or gap <= 0) else gap
 
     # Format compound name with LaTeX subscripts
-    formatted_name = format_compound_latex(compound_name)
+    formatted_name = _format_compound_latex(compound_name)
     ax.set_title(
         rf"{formatted_name} ($\mu$ = {chem_pot})",
         fontsize=20,
@@ -213,7 +251,7 @@ def render_plotter_page(df: pd.DataFrame):
 
     compound_list = df["AB"].unique()
     # Create formatted display names for compounds
-    compound_display = {comp: format_compound_latex(comp) for comp in compound_list}
+    compound_display = {comp: _format_compound_latex(comp) for comp in compound_list}
     formatted_compounds = [compound_display[comp] for comp in compound_list]
 
     comp_sel_formatted = st.selectbox("1️⃣ Select a Compound", formatted_compounds)
