@@ -10,25 +10,29 @@ from rich import print
 from uncertainties import ufloat
 from typing import Any, Dict, List, Optional, Tuple
 import matplotlib.pyplot as plt
-from googleapiclient.discovery import build
-from googleapiclient.http import MediaIoBaseDownload
-from google.oauth2 import service_account
 
 # ──────────────────────────────────────────────────────────────
 # ─── APP DEFAULTS ─────────────────────────────────────────────
 # ──────────────────────────────────────────────────────────────
-ROOT_FOLDER_ID_DEFAULT = "1gYTtFpPIRCDWpLBW855RA6XwG0buifbi"   # ✅ your folder ID
-MOCK_MODE = False  # ✅ live Google Drive mode
+ROOT_FOLDER_ID_DEFAULT = "1gYTtFpPIRCDWpLBW855RA6XwG0buifbi"  # ✅ your Drive root folder ID
 
 # ──────────────────────────────────────────────────────────────
 # ─── GOOGLE DRIVE SETUP ───────────────────────────────────────
 # ──────────────────────────────────────────────────────────────
+try:
+    from googleapiclient.discovery import build
+    from googleapiclient.http import MediaIoBaseDownload
+    from google.oauth2 import service_account
+except ImportError:
+    build = MediaIoBaseDownload = service_account = None
+    print("[yellow]⚠️ Google API libraries not found. Running in offline mode.[/yellow]")
+
 SERVICE_ACCOUNT_FILE = "service_account.json"
 SCOPES = ["https://www.googleapis.com/auth/drive.readonly"]
 
 drive_service = None
 try:
-    if os.path.exists(SERVICE_ACCOUNT_FILE):
+    if service_account and os.path.exists(SERVICE_ACCOUNT_FILE):
         credentials = service_account.Credentials.from_service_account_file(
             SERVICE_ACCOUNT_FILE, scopes=SCOPES
         )
@@ -61,7 +65,8 @@ def download_bytes(file_id):
     Download a file from Google Drive using secure HTTPS client.
     """
     if drive_service is None:
-        raise RuntimeError("Google Drive API not initialized or no credentials.")
+        print("[yellow]⚠️ Skipping Google Drive download (no credentials).[/yellow]")
+        return b"", "mock_structure.cif"
 
     os.environ.pop("HTTPS_PROXY", None)
     os.environ.pop("HTTP_PROXY", None)
@@ -122,6 +127,39 @@ def discover_charge_states(defect_folder_id: Optional[str] = None) -> List[str]:
     return [f["name"] for f in results.get("files", [])]
 
 # ──────────────────────────────────────────────────────────────
+# ─── PARSE CHARGE LABEL → INTEGER ─────────────────────────────
+# ──────────────────────────────────────────────────────────────
+def parse_charge_label_to_q(label: str) -> Optional[int]:
+    """
+    Parse a folder or label name like 'q=+1', 'charge_minus_2', 'q0' into an integer.
+    Returns None if it cannot parse.
+    """
+    label = label.lower().strip()
+
+    if label.startswith("q="):
+        try:
+            return int(label.replace("q=", "").replace("+", ""))
+        except ValueError:
+            return None
+
+    if "plus" in label:
+        try:
+            return int(label.split("plus_")[-1])
+        except ValueError:
+            return None
+
+    if "minus" in label:
+        try:
+            return -int(label.split("minus_")[-1])
+        except ValueError:
+            return None
+
+    if label in ["q0", "charge0", "neutral"]:
+        return 0
+
+    return None
+
+# ──────────────────────────────────────────────────────────────
 # ─── FIND STRUCTURE FILE ──────────────────────────────────────
 # ──────────────────────────────────────────────────────────────
 STRUCTURE_FILE_PRIORITY = [
@@ -131,7 +169,8 @@ STRUCTURE_FILE_PRIORITY = [
 def find_structure_file(folder_id: str):
     """Find preferred structure file in a Drive folder."""
     if drive_service is None:
-        raise RuntimeError("Google Drive API not initialized (missing credentials).")
+        print(f"[yellow]⚠️ Skipping structure lookup for folder_id={folder_id} (no Drive access).[/yellow]")
+        return b"", "mock_structure.cif"
 
     results = drive_service.files().list(
         q=f"'{folder_id}' in parents and trashed=false",
