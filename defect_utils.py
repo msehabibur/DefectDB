@@ -11,7 +11,9 @@ from googleapiclient.http import MediaIoBaseDownload
 
 # ── Config ───────────────────────────────────────────────────────────────────
 ROOT_FOLDER_ID_DEFAULT = "1gYTtFpPIRCDWpLBW855RA6XwG0buifbi" # Still here as a default
-EXCEL_FILE_NAME = "cdsete_defect_library_generation_pbesol.xlsx"
+
+# --- FILENAME UPDATED HERE ---
+EXCEL_FILE_NAME = "cdsete_defect_library_generation_pbesol"
 
 # ── Auth ─────────────────────────────────────────────────────────────────────
 @st.cache_resource(show_spinner=False)
@@ -80,6 +82,7 @@ def load_excel_data(root_folder_id: str) -> Optional[pd.DataFrame]:
     
     try:
         raw = download_bytes(meta["id"])
+        # pd.read_excel can parse the file content even without an extension
         df = pd.read_excel(io.BytesIO(raw))
         return df
     except Exception as e:
