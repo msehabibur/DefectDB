@@ -74,15 +74,4 @@ if compounds:
 else:
     st.info("Scan a Root Folder ID in the sidebar to begin.")
 
-# ── Notes Expander ───────────────────────────────────────────────────────────
-with st.expander("ℹ️ Notes"):
-    st.markdown(
-        f"""
-**Charge mapping (fixed):** `Charged+2 → Toten_p2`, `Charged+1 → Toten_p1`, `Charged0/Neutral → Toten_neut`, `Charged-1 → Toten_m1`, `Charged-2 → Toten_m2`.
-
-**Global μ CSV supported:** If `data.csv` only has μ columns like `V_Cd (Cd-rich)`, `V_Cd (Te-rich)`, `As_Te (Cd-rich)`, `As_Te (Te-rich)`, `Cl_Te (Cd-rich)`, `Cl_Te (Te-rich)`, the app uses those for **all compounds**.  
-Defaults: VBM={DEFAULT_VBM}, Bandgap={DEFAULT_GAP}.
-
-**Formation energy:** `E_f(q, EF) = Toten_q − Toten_pure + μ + q·(EF + VBM) + Corr_q` (Corr_q defaults to 0.0).
-"""
-    )
+# ── Notes Expander (REMOVED) ─────────────────────────────────────────────────
