@@ -4,6 +4,8 @@ import ssl
 import certifi
 import httplib2
 import streamlit as st
+from rich.console import Console
+from rich.traceback import install as install_rich_traceback
 
 from defect_utils import (
     ROOT_FOLDER_ID_DEFAULT,
@@ -14,9 +16,13 @@ from page_plotter import render_plotter_page
 from page_structures import render_structures_page
 
 # ── Config & SSL ──────────────────────────────────────────────────────────────
+install_rich_traceback(show_locals=False)
+console = Console()
+
 st.set_page_config(page_title="DefectDB Studio", layout="wide")
 httplib2.CA_CERTS = certifi.where()
 ssl.create_default_context(cafile=certifi.where())
+console.log("Streamlit configuration initialised.")
 
 # ── Sidebar (Global Controls) ─────────────────────────────────────────────────
 with st.sidebar:

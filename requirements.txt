@@ -6,3 +6,4 @@ pandas
 numpy
 pymatgen
 certifi
+rich==14.2.0

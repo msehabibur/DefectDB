@@ -1,10 +1,18 @@
 # page_plotter.py
-import streamlit as st
-import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
 import io
 from typing import Optional, Dict, Any
+
+import matplotlib
+import numpy as np
+import pandas as pd
+import streamlit as st
+
+# Ensure Matplotlib uses a non-interactive backend that works in headless
+# environments (such as the execution sandbox for these exercises).  Using a
+# GUI backend can lead to segmentation faults when Streamlit launches.
+matplotlib.use("Agg", force=True)
+
+import matplotlib.pyplot as plt
 
 # ── Constants ────────────────────────────────────────────────────────────────
 DEFAULT_VBM = 0.0
@@ -143,15 +151,19 @@ def plot_formation_energy(df_to_plot: pd.DataFrame, compound_name: str, chem_pot
         ax.legend(loc='center left', bbox_to_anchor=[1.03, 0.5], ncol=1, frameon=True, prop={'family': 'sans-serif', 'size': 22})
     
     st.pyplot(fig, clear_figure=True)
+
     buf = io.BytesIO()
     fig.savefig(buf, format="png", dpi=300, bbox_inches="tight")
+    buf.seek(0)
     
     # Update download button filename
     st.download_button(
         "Download plot (PNG)", 
-        buf.getvalue(), 
+        buf.getvalue(),
         file_name=f"{compound_name}_{chem_pot}_plot.png"
     )
+
+    plt.close(fig)
 
 # ── Main Page UI Function ──────────────────────────────────────────────────
 def render_plotter_page(df: pd.DataFrame):
