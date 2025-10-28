@@ -29,7 +29,7 @@ def drive_service():
 
     creds = service_account.Credentials.from_service_account_info(
         info,
-        scopes=["https.www.googleapis.com/auth/drive.readonly"],
+        scopes=["https://www.googleapis.com/auth/drive.readonly"],
     )
     return build("drive", "v3", credentials=creds, cache_discovery=False)
 
