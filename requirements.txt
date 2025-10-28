@@ -1,19 +1,24 @@
+# ---- Streamlit & core ----
 streamlit==1.50.0
+watchdog==5.0.2
+grpcio==1.66.1
+protobuf==5.28.2
+
+# ---- Google / Drive access ----
 google-api-python-client==2.147.0
 google-auth==2.35.0
 google-auth-httplib2==0.2.0
-grpcio==1.66.1
-protobuf==5.28.2
-watchdog==5.0.2
-pandas
+uritemplate==4.2.0
+urllib3==2.2.2
+certifi
+
+# ---- Scientific stack ----
 numpy
+pandas
 matplotlib
 pymatgen
-certifi
-rich==14.2.0
 tqdm==4.67.1
 typing-extensions==4.12.2
 tzdata==2025.2
 uncertainties==3.2.3
-uritemplate==4.2.0
-urllib3==2.5.0
+rich==14.2.0
