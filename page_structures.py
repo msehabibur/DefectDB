@@ -1,70 +1,96 @@
-# page_structures.py
-import streamlit as st
-from typing import Dict
+"""Optimized structures tab for DefectDB Studio."""
+from __future__ import annotations
 
-# Import necessary functions from the backend
+from typing import Dict, Tuple
+
+import streamlit as st
+
 from defect_utils import (
-    discover_defects, 
-    discover_charge_states, 
-    parse_charge_label_to_q, 
-    find_structure_file
+    discover_charge_states,
+    discover_compounds,
+    discover_defects,
+    find_structure_file,
+    parse_charge_label_to_q,
 )
 
-def render_structures_tab(compounds: Dict[str, str]):
-    st.subheader("📦 Select Compound and Defects")
 
-    comp_sel = st.selectbox(
-        "Select a compound", 
-        list(compounds.keys()), 
-        key="struct_comp_sel"
-    )
-    comp_id = compounds[comp_sel]
+@st.cache_data(show_spinner=False)
+def _sorted_items(items: Dict[str, str]) -> Tuple[Tuple[str, str], ...]:
+    """Return a stable, alphabetically sorted view of a mapping."""
+    return tuple(sorted(items.items(), key=lambda kv: kv[0].lower()))
 
-    defects = discover_defects(comp_id)
-    defect_names = sorted(defects.keys())
-    
-    chosen_defects = st.multiselect(
-        "Defects", 
-        defect_names, 
-        default=defect_names, 
-        key="struct_defect_multi"
+
+def render_structures_page(root_folder_id: str) -> None:
+    """Render the optimized structures tab."""
+    st.header("🧱 Optimized Structures")
+
+    compounds = discover_compounds(root_folder_id)
+    if not compounds:
+        st.info("No compound folders were found in the provided Google Drive root folder.")
+        return
+
+    compound_choices = _sorted_items(compounds)
+    comp_labels = [label for label, _ in compound_choices]
+    comp_ids = {label: value for label, value in compound_choices}
+
+    selected_compound = st.selectbox("Select a compound", comp_labels, key="structures_compound")
+    compound_id = comp_ids[selected_compound]
+
+    discovered_defects = discover_defects(compound_id)
+    if not discovered_defects:
+        st.info("No defect folders were found for the selected compound.")
+        return
+
+    defect_choices = _sorted_items(discovered_defects)
+    defect_labels = [label for label, _ in defect_choices]
+    selected_defects = st.multiselect(
+        "Select defects",
+        defect_labels,
+        default=defect_labels,
+        key=f"structures_defects_{compound_id}",
     )
+
+    if not selected_defects:
+        st.warning("Select at least one defect to view charge states and downloads.")
+        return
 
     st.markdown("---")
-    st.subheader("📥 Download Optimized Structures")
+    st.subheader("Available structures")
 
-    if st.button("List & download structures"):
-        if not chosen_defects:
-            st.warning("Please select at least one defect.")
-            return
+    drive_defects = discover_defects(compound_id)
+    for defect_name in selected_defects:
+        defect_id = drive_defects.get(defect_name)
+        if not defect_id:
+            st.info(f"{defect_name}: defect folder not found in Drive.")
+            continue
 
-        with st.spinner("Finding structure files in Drive..."):
-            drive_defects = discover_defects(comp_id)
-            for dname in chosen_defects:
-                did = drive_defects.get(dname)
-                if not did:
-                    st.info(f"Drive: defect folder '{dname}' not found."); continue
-                
-                charges = discover_charge_states(did)
-                if not charges:
-                    st.info(f"{dname}: no charge-state subfolders."); continue
-                
-                # sort by q (desc)
-                items = []
-                for qlbl, qid in charges.items():
-                    q = parse_charge_label_to_q(qlbl)
-                    items.append((q, qlbl, qid))
-                items.sort(key=lambda x: (x[0] is None, -(x[0] or 0)))
-                
-                st.markdown(f"**{dname}**")
-                for q, qlbl, qid in items:
-                    blob, fname = find_structure_file(qid)
-                    if blob is None:
-                        st.write(f"• {qlbl}: _structure not found_")
-                    else:
-                        st.download_button(
-                            label=f"Download {dname} {qlbl} → {fname}",
-                            data=blob,
-                            file_name=f"{comp_sel}_{dname}_{qlbl}_{fname}",
-                            key=f"dl_{comp_sel}_{dname}_{qlbl}"
-                        )
+        charges = discover_charge_states(defect_id)
+        if not charges:
+            st.info(f"{defect_name}: no charge-state folders detected.")
+            continue
+
+        charge_entries = []
+        for charge_label, charge_id in charges.items():
+            charge_value = parse_charge_label_to_q(charge_label)
+            charge_entries.append((charge_value, charge_label, charge_id))
+
+        # Sort from highest charge to lowest, with unknown charges last
+        charge_entries.sort(key=lambda entry: (entry[0] is None, -(entry[0] or 0)))
+
+        st.markdown(f"### {defect_name}")
+        for charge_value, charge_label, charge_folder_id in charge_entries:
+            blob, filename = find_structure_file(charge_folder_id)
+            charge_display = charge_label
+            if charge_value is not None and charge_label.lower() != f"q{charge_value:+d}".lower():
+                charge_display = f"{charge_label} (q = {charge_value:+d})"
+
+            if blob is None:
+                st.write(f"• {charge_display}: _structure file not found_")
+                continue
+
+            st.download_button(
+                label=f"Download {charge_display} → {filename}",
+                data=blob,
+                file_name=f"{selected_compound}_{defect_name}_{charge_label}_{filename}",
+                key=f"download_{selected_compound}_{defect_name}_{charge_label}",
+            )
