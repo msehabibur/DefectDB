@@ -4,17 +4,13 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import io
-from typing import Optional, List, Dict, Any
+from typing import Optional, Dict, Any
 
-# Import necessary functions from the backend
-from defect_utils import (
-    build_correction_table_for_compound, 
-    discover_defects,
-    DEFAULT_GAP,
-    DEFAULT_VBM
-)
+# ── Constants ────────────────────────────────────────────────────────────────
+DEFAULT_VBM = 0.0
+DEFAULT_GAP = 1.5
 
-# ── Plotting Helpers (Adapted from your script) ──────────────────────────────
+# ── Plotting Function (from your script) ─────────────────────────────────────
 def _coerce_float(x):
     try:
         if x is None: return np.nan
@@ -24,7 +20,11 @@ def _coerce_float(x):
     except Exception:
         return np.nan
 
-def plot_formation_energy(df_to_plot: pd.DataFrame, compound_name: str, chem_pot: str):
+def plot_formation_energy(df_to_plot: pd.DataFrame, compound_name: str, chem_pot: str, chem_pot_col: str):
+    """
+    Generates the defect formation energy plot based on the provided DataFrame
+    and plotting script logic.
+    """
     plt.rc('font', family='sans-serif')
     fig, ax = plt.subplots(figsize=(5, 6))
     plt.subplots_adjust(left=0.14, bottom=0.14, right=0.70, top=0.90)
@@ -33,7 +33,7 @@ def plot_formation_energy(df_to_plot: pd.DataFrame, compound_name: str, chem_pot
         ax.text(0.5, 0.5, "No data to plot", ha="center", va="center", transform=ax.transAxes)
         st.pyplot(fig, clear_figure=True); return
 
-    # Get gap and VBM from the data (use defaults if missing)
+    # Get gap from the data (use default if missing)
     gap = _coerce_float(df_to_plot["gap"].iloc[0]); gap = DEFAULT_GAP if (np.isnan(gap) or gap<=0) else gap
     
     # Set title based on your format
@@ -51,12 +51,13 @@ def plot_formation_energy(df_to_plot: pd.DataFrame, compound_name: str, chem_pot
     all_ymin, all_ymax = [], []
 
     for _, r in df_to_plot.iterrows():
+        # Filter rows where Plot == 'Y'
         if r.get("Plot") != 'Y':
             continue
 
         # Get all values, defaulting to nan
         Toten_pure = _coerce_float(r.get("Toten_pure"))
-        mu = _coerce_float(r.get("mu"))
+        mu = _coerce_float(r.get(chem_pot_col)) # Use the selected mu column
         vbm = _coerce_float(r.get("VBM"))
         
         Toten_p2 = _coerce_float(r.get("Toten_p2"))
@@ -72,6 +73,7 @@ def plot_formation_energy(df_to_plot: pd.DataFrame, compound_name: str, chem_pot
 
         # Skip if pure, mu, or vbm is missing
         if any(np.isnan(v) for v in [Toten_pure, mu, vbm]):
+            st.warning(f"Skipping defect {r.get('Defect')}: missing Toten_pure, mu, or VBM.")
             continue
 
         # Helper to calculate energy for a charge state, returning np.inf if data is missing
@@ -92,6 +94,7 @@ def plot_formation_energy(df_to_plot: pd.DataFrame, compound_name: str, chem_pot
         # Filter out inf values for plotting and range calculation
         valid_indices = np.isfinite(Form_en)
         if not np.any(valid_indices):
+            st.warning(f"Skipping defect {r.get('Defect')}: No valid charge states found.")
             continue
             
         all_ymin.append(np.min(Form_en[valid_indices]))
@@ -150,69 +153,53 @@ def plot_formation_energy(df_to_plot: pd.DataFrame, compound_name: str, chem_pot
         file_name=f"{compound_name}_{chem_pot}_plot.png"
     )
 
-# ── Tab UI Function ──────────────────────────────────────────────────────────
-def render_plotter_tab(
-    root_id: str, 
-    compounds: Dict[str, str], 
-    root_params: Optional[pd.DataFrame]
-):
-    st.subheader("📦 Select Compound and Conditions")
+# ── Main Page UI Function ──────────────────────────────────────────────────
+def render_plotter_page(df: pd.DataFrame):
+    st.header("📊 Plotter Controls")
     
-    c1, c2 = st.columns(2)
-    with c1:
-        comp_sel = st.selectbox(
-            "Select a compound", 
-            list(compounds.keys()), 
-            key="plot_comp_sel"
-        )
-        comp_id = compounds[comp_sel]
-    
-    with c2:
-        chem_pot_choice = st.selectbox(
-            "Chemical potential set", 
-            ["Cd-rich", "Te-rich"], 
-            key="plot_chem_pot"
-        )
-    
-    defects = discover_defects(comp_id)
-    defect_names = sorted(defects.keys())
-    st.markdown("### 🧬 Choose defects to analyze")
-    chosen_defects = st.multiselect(
-        "Defects", 
-        defect_names, 
-        default=defect_names, 
-        key="plot_defect_multi"
-    )
+    # Check for required columns based on the image
+    required_cols = ['AB', 'Defect', 'Plot', 'gap', 'VBM', 'Toten_pure', 'mu_Cd_rich', 'mu_Te_rich']
+    if not all(col in df.columns for col in required_cols):
+        st.error(f"File is missing required columns. Make sure it contains: {', '.join(required_cols)}")
+        return
 
-    if st.button("Build table & plot"):
-        with st.spinner("Building table from Drive + data.csv..."):
-            try:
-                table = build_correction_table_for_compound(
-                    root_id, comp_sel, comp_id, chem_pot_choice, root_params,
-                    restrict_defects=chosen_defects
-                )
-                if table.empty:
-                    st.warning("No rows produced — check folder contents.")
-                else:
-                    st.success("Constructed correction/energy table.")
-                    st.dataframe(table, use_container_width=True)
-                    st.download_button(
-                        "Download table (CSV)",
-                        table.to_csv(index=False).encode(),
-                        file_name=f"{comp_sel}_corrections.csv"
-                    )
-                    
-                    st.markdown("---")
-                    st.subheader("📊 Defect Formation Energy Plot")
-                    sub = table[table["Defect"].isin(chosen_defects)].copy()
-                    
-                    # --- UPDATED FUNCTION CALL ---
-                    plot_formation_energy(
-                        sub, 
-                        compound_name=comp_sel, 
-                        chem_pot=chem_pot_choice
-                    )
+    # 1. Ask user which compound (from 'AB' column)
+    compound_list = df['AB'].unique()
+    comp_sel = st.selectbox("1. Select a Compound", compound_list)
+    
+    # Filter dataframe by selected compound
+    df_comp = df[df['AB'] == comp_sel].copy()
+
+    # 2. Ask which chemical potential (from mu_ columns)
+    mu_cols = {
+        "Cd-rich": "mu_Cd_rich", 
+        "Te-rich": "mu_Te_rich"
+    }
+    chem_pot_choice = st.selectbox("2. Select Chemical Potential", mu_cols.keys())
+    chem_pot_col_name = mu_cols[chem_pot_choice]
+
+    # 3. Ask which defects (from 'Defect' column)
+    defect_list = sorted(df_comp['Defect'].unique())
+    chosen_defects = st.multiselect("3. Select Defects to Plot", defect_list, default=defect_list)
+
+    if st.button("Generate Plot"):
+        if not chosen_defects:
+            st.warning("Please select at least one defect.")
+            return
+
+        # Filter the dataframe for the final plot
+        df_plot = df_comp[df_comp['Defect'].isin(chosen_defects)].copy()
+        
+        if df_plot.empty:
+            st.warning("No data found for the selected defects.")
+        else:
+            st.subheader(f"Formation Energy Plot: {comp_sel}")
+            plot_formation_energy(
+                df_plot, 
+                compound_name=comp_sel, 
+                chem_pot=chem_pot_choice,
+                chem_pot_col=chem_pot_col_name
+            )
             
-            except Exception as e:
-                st.error(f"Failed to build/plot: {e}")
-                st.exception(e) # Show full traceback
+            with st.expander("Show Filtered Data Used for Plot"):
+                st.dataframe(df_plot)
