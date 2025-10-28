@@ -13,7 +13,7 @@ from googleapiclient.http import MediaIoBaseDownload
 ROOT_FOLDER_ID_DEFAULT = "1gYTtFpPIRCDWpLBW855RA6XwG0buifbi" # Still here as a default
 
 # --- FILENAME UPDATED HERE ---
-EXCEL_FILE_NAME = "cdsete_defect_library_generation_pbesol"
+EXCEL_FILE_NAME = "cdsete_defect_library_generation_pbesol.csv"
 
 # ── Auth ─────────────────────────────────────────────────────────────────────
 @st.cache_resource(show_spinner=False)
