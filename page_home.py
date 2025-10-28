@@ -18,10 +18,12 @@ DETAIL_TEXT = (
 AUTHORS = [
     "Md Habibur Rahman",
     "Yi Yang",
-    "School of Materials Engineering, Purdue University",
-    "West Lafayette, IN 47907, United States of America",
-    "and Arun Mannodi-Kanakkithodi",
+    "Arun Mannodi-Kanakkithodi",
 ]
+
+AFFILIATION = (
+    "School of Materials Engineering, Purdue University, West Lafayette, IN 47907, USA"
+)
 
 
 def render_home_page() -> None:
@@ -29,8 +31,10 @@ def render_home_page() -> None:
     st.title("🏠 Welcome to DefectDB Studio")
 
     st.subheader("Project Team")
-    for line in AUTHORS:
-        st.markdown(line)
+    with st.container(border=True):
+        for author in AUTHORS:
+            st.markdown(f"**{author}**")
+        st.markdown(f"*{AFFILIATION}*")
 
     st.markdown("---")
     st.subheader("About the Tool")
