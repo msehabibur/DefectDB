@@ -1,1 +1,16 @@
-streamlit==1.50.0
+streamlit
+google-api-python-client
+google-auth
+google-auth-httplib2
+pandas
+numpy
+pymatgen
+certifi
+rich==14.2.0
+tqdm==4.67.1
+typing-extensions==4.15.0
+tzdata==2025.2
+uncertainties==3.2.3
+uritemplate==4.2.0
+urllib3==2.5.0
+watchdog==6.0.0
