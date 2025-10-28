@@ -88,11 +88,27 @@ def download_bytes(file_id):
     done = False
     while not done:
         def _do():
-            # Force clean SSL handshake for each chunk
             return downloader.next_chunk(http=http)
         _, done = _with_retries(_do)
 
     return file_handle.getvalue()
+
+# ──────────────────────────────────────────────────────────────
+# ─── DISCOVERY HELPERS (used by page_structures) ──────────────
+# ──────────────────────────────────────────────────────────────
+
+def discover_compounds(root_folder_id: Optional[str] = None) -> List[str]:
+    """Return a list of compound names found under the root folder."""
+    # Placeholder version — replace with real Drive traversal later
+    return ["CdTe", "CdSeTe", "CdZnTe"]
+
+def discover_defects(compound_folder_id: Optional[str] = None) -> List[str]:
+    """Return a list of defects available for a given compound."""
+    return ["V_Cd", "V_Te", "As_Te", "Cl_Te"]
+
+def discover_charge_states(defect_folder_id: Optional[str] = None) -> List[int]:
+    """Return charge states for a given defect."""
+    return [-2, -1, 0, +1, +2]
 
 # ──────────────────────────────────────────────────────────────
 # ─── FILE SEARCHING UTILS ─────────────────────────────────────
@@ -127,7 +143,6 @@ def find_structure_file(folder_id: str):
             if name.lower() == candidate.lower():
                 return download_bytes(meta["id"]), name
 
-    # fallback: first file alphabetically
     if files_by_name:
         first = sorted(files_by_name.items())[0][1]
         return download_bytes(first["id"]), first["name"]
@@ -135,13 +150,10 @@ def find_structure_file(folder_id: str):
     raise FileNotFoundError(f"No structure file found in folder {folder_id}")
 
 # ──────────────────────────────────────────────────────────────
-# ─── DATA LOADING UTILS (for app.py imports) ──────────────────
+# ─── DATA LOADING UTIL ────────────────────────────────────────
 # ──────────────────────────────────────────────────────────────
 
 def load_csv_data(path: str) -> pd.DataFrame:
-    """
-    Safely load CSV data for defect plots or energy tables.
-    """
     try:
         df = pd.read_csv(path)
         print(f"[green]Loaded CSV file successfully: {path}[/green]")
@@ -168,11 +180,11 @@ def plot_defect_levels(defect_data: pd.DataFrame, title: str = "Defect Formation
     plt.xlabel("Fermi Level (eV)", fontsize=16)
     plt.ylabel("Formation Energy (eV)", fontsize=16)
 
-    # ✅ Increase tick font sizes
+    # Larger tick fonts
     plt.xticks(fontsize=14)
     plt.yticks(fontsize=14)
 
-    # ✅ Limit Y-axis to 0–5 eV
+    # Limit Y-axis
     plt.ylim(0, 5)
 
     plt.legend(fontsize=12)
@@ -181,11 +193,10 @@ def plot_defect_levels(defect_data: pd.DataFrame, title: str = "Defect Formation
     plt.show()
 
 # ──────────────────────────────────────────────────────────────
-# ─── EXAMPLE TEST (safe to remove) ─────────────────────────────
+# ─── EXAMPLE TEST ─────────────────────────────────────────────
 # ──────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    # Dummy data to test plotting
     df = pd.DataFrame({
         "defect": ["V_Cd", "V_Te"],
         "charge_states": [np.linspace(0, 1, 5), np.linspace(0, 1, 5)],
