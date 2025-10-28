@@ -26,6 +26,7 @@ from rich.traceback import install as install_rich_traceback
 from defect_utils import (
     ROOT_FOLDER_ID_DEFAULT,
     load_csv_data,
+    format_compound_latex,
 )
 from page_plotter import render_plotter_page
 from page_structures import render_structures_page
@@ -82,13 +83,13 @@ tab_about, tab_data, tab_plot, tab_structures = st.tabs([
 # ─── ABOUT TAB ────────────────────────────────────────────────────────────────
 with tab_about:
     st.title("🧪 DefectDB Studio")
-    st.subheader("An Interactive Database and Visualization Platform for Defect Thermodynamics")
+    st.subheader("An Interactive Database and Visualization Platform for Defect Thermodynamics in Cd–Se–Te")
 
     with st.container(border=True):
         st.markdown("""
-        **Md Habibur Rahman**, **Yi Yang**, and **Arun Mannodi-Kanakkithodi**  
-        *School of Materials Engineering, Purdue University*  
-        *West Lafayette, IN 47907, United States of America*
+        **Md Habibur Rahman**, **Yi Yang**, and **Arun Mannodi-Kanakkithodi**
+        *School of Materials Engineering, Purdue University*
+        *West Lafayette, IN 47907, USA*
         """)
 
     st.info(
@@ -117,18 +118,16 @@ with tab_about:
 
     with st.expander("🧱 **3️⃣ Structure Browser**", expanded=True):
         st.markdown("""
-        - Access **relaxed POSCAR/CIF files** of bulk and defect structures directly from Drive.  
-        - Compare geometrical distortions and visualize defect complexes.
+        - Access **relaxed POSCAR/CIF files** of bulk and defect structures directly from Drive.
         """)
 
     st.markdown("---")
     st.header("💡 Purpose and Vision")
     st.markdown("""
-    **DefectDB Studio** aims to   
-    - democratize access to curated defect datasets for **semiconductors** and **chalcogenides**,  
-    - accelerate discovery of **defect-tolerant materials** for renewable energy,  
-    - provide **AI-ready exports** for machine-learning workflows, and  
-    - promote **FAIR data principles** (Findable, Accessible, Interoperable, Reusable).
+    **DefectDB Studio** aims to
+    - Democratize access to curated defect datasets for **semiconductors** and **chalcogenides**,
+    - Accelerate discovery of **defect-tolerant materials** for renewable energy, and
+    - Promote **FAIR data principles** (Findable, Accessible, Interoperable, Reusable).
     """)
 
 # ─── DATA TAB ─────────────────────────────────────────────────────────────────
@@ -136,7 +135,7 @@ with tab_data:
     st.header("📂 Loaded Defect Dataset")
     if defect_data is not None:
         st.success("✅ Dataset successfully loaded!")
-        st.dataframe(defect_data.head(30), width="stretch")
+        st.dataframe(defect_data, use_container_width=True)
         st.caption(f"Total records: **{len(defect_data):,}**")
     else:
         st.warning("Please scan a Google Drive folder from the sidebar to load defect data.")

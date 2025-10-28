@@ -5,6 +5,7 @@ import matplotlib
 import numpy as np
 import pandas as pd
 import streamlit as st
+from defect_utils import format_compound_latex
 
 # Use a headless backend for Streamlit environments
 matplotlib.use("Agg", force=True)
@@ -44,9 +45,10 @@ def plot_formation_energy(df_to_plot: pd.DataFrame, compound_name: str, chem_pot
     gap = _coerce_float(df_to_plot["gap"].iloc[0])
     gap = DEFAULT_GAP if (np.isnan(gap) or gap <= 0) else gap
 
-    # ✅ FIXED: raw string for mu symbol
+    # Format compound name with LaTeX subscripts
+    formatted_name = format_compound_latex(compound_name)
     ax.set_title(
-        rf"{compound_name} ($\mu$ = {chem_pot})",
+        rf"{formatted_name} ($\mu$ = {chem_pot})",
         fontsize=20,
         horizontalalignment="center",
         verticalalignment="top",
@@ -92,8 +94,11 @@ def plot_formation_energy(df_to_plot: pd.DataFrame, compound_name: str, chem_pot
         Toten_m2 = _coerce_float(r.get("Toten_m2"))
         Corr_m2 = _coerce_float(r.get("Corr_m2"))
 
-        if any(np.isnan(v) for v in [Toten_pure, mu, vbm]):
-            st.warning(f"Skipping defect {r.get('Defect')}: missing Toten_pure, mu, or VBM.")
+        if np.isnan(mu):
+            st.info(f"⚠️ Formation energy not available for **{r.get('Defect')}** under this chemical potential condition.")
+            continue
+
+        if any(np.isnan(v) for v in [Toten_pure, vbm]):
             continue
 
         def get_q_energy(toten_q, corr_q, q, ef_val, vbm_val):
@@ -151,12 +156,19 @@ def plot_formation_energy(df_to_plot: pd.DataFrame, compound_name: str, chem_pot
     plt.rc("ytick", labelsize=22)
     ax.set_xlim([-0.2, gap + 0.2])
 
-    ymin = min(all_ymin) if all_ymin else -0.2
-    ymax = max(all_ymax) if all_ymax else 1.5
-    ax.set_ylim([max(ymin, -0.2), min(ymax, 1.5)])
+    # Auto-scale Y-axis based on selected defects: 0 to (max + 0.5 eV)
+    if all_ymax:
+        ymax_limit = max(all_ymax) + 0.5
+    else:
+        ymax_limit = 1.5
+    ax.set_ylim([0, ymax_limit])
 
     ax.set_xticks([0.0, np.round(gap / 2, 2), np.round(gap, 2)])
-    ax.set_yticks([0, 0.5, 1, 1.5])
+    # Dynamically set y-ticks based on the range
+    if ymax_limit <= 2.0:
+        ax.set_yticks(np.arange(0, ymax_limit + 0.5, 0.5))
+    else:
+        ax.set_yticks(np.arange(0, ymax_limit + 1, 1.0))
 
     if count > 0:
         ax.legend(
@@ -200,7 +212,13 @@ def render_plotter_page(df: pd.DataFrame):
         return
 
     compound_list = df["AB"].unique()
-    comp_sel = st.selectbox("1️⃣ Select a Compound", compound_list)
+    # Create formatted display names for compounds
+    compound_display = {comp: format_compound_latex(comp) for comp in compound_list}
+    formatted_compounds = [compound_display[comp] for comp in compound_list]
+
+    comp_sel_formatted = st.selectbox("1️⃣ Select a Compound", formatted_compounds)
+    # Get the original compound name
+    comp_sel = [k for k, v in compound_display.items() if v == comp_sel_formatted][0]
 
     df_comp = df[df["AB"] == comp_sel].copy()
 
@@ -221,7 +239,7 @@ def render_plotter_page(df: pd.DataFrame):
         if df_plot.empty:
             st.warning("No data found for the selected defects.")
         else:
-            st.subheader(f"Formation Energy Plot: {comp_sel}")
+            st.subheader(f"Formation Energy Plot: {comp_sel_formatted}")
             plot_formation_energy(
                 df_plot,
                 compound_name=comp_sel,
