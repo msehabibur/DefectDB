@@ -10,17 +10,15 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
 
 # ── Config ───────────────────────────────────────────────────────────────────
-ROOT_FOLDER_ID_DEFAULT = "1gYTtFpPIRCDWpLBW855RA6XwG0buifbi" # Still here as a default
-
-# --- FILENAME UPDATED HERE ---
-EXCEL_FILE_NAME = "cdsete_defect_library_generation_pbesol.csv"
+ROOT_FOLDER_ID_DEFAULT = "1gYTtFpPIRCDWpLBW855RA6XwG0buifbi"
+CSV_FILE_NAME = "cdsete_defect_library_generation_pbesol.csv" # Updated filename
 
 # ── Auth ─────────────────────────────────────────────────────────────────────
 @st.cache_resource(show_spinner=False)
 def drive_service():
     creds = service_account.Credentials.from_service_account_info(
         dict(st.secrets["gdrive_service_account"]),
-        scopes=["https://www.googleapis.com/auth/drive.readonly"],
+        scopes=["https.www.googleapis.com/auth/drive.readonly"],
     )
     return build("drive", "v3", credentials=creds, cache_discovery=False)
 
@@ -72,19 +70,18 @@ def find_file_in_folder_by_name(folder_id: str, filename: str) -> Optional[Dict]
     return None
 
 # ── Main Data Loading Function ───────────────────────────────────────────────
-def load_excel_data(root_folder_id: str) -> Optional[pd.DataFrame]:
+def load_csv_data(root_folder_id: str) -> Optional[pd.DataFrame]: # Renamed function
     """
-    Finds and loads the specific defect Excel file from the given root folder.
+    Finds and loads the specific defect CSV file from the given root folder.
     """
-    meta = find_file_in_folder_by_name(root_folder_id, EXCEL_FILE_NAME)
+    meta = find_file_in_folder_by_name(root_folder_id, CSV_FILE_NAME) # Use CSV_FILE_NAME
     if not meta:
         return None
     
     try:
         raw = download_bytes(meta["id"])
-        # pd.read_excel can parse the file content even without an extension
-        df = pd.read_excel(io.BytesIO(raw))
+        df = pd.read_csv(io.BytesIO(raw)) # Use pd.read_csv
         return df
     except Exception as e:
-        st.error(f"Failed to read Excel file: {e}")
+        st.error(f"Failed to read CSV file: {e}")
         return None
