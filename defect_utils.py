@@ -186,3 +186,40 @@ def find_structure_file(folder_id: str):
             data = download_bytes(f["id"])
             return data, f["name"]
     return None, ""
+
+
+# ────────────────────────────────────────────────
+# CSV DATA LOADING
+# ────────────────────────────────────────────────
+def load_csv_data(root_folder_id: Optional[str] = None) -> Optional[pd.DataFrame]:
+    """
+    Load defect CSV data from Google Drive.
+
+    Args:
+        root_folder_id: Google Drive folder ID to search in
+
+    Returns:
+        DataFrame containing the CSV data, or None if file not found
+    """
+    root_id = root_folder_id or ROOT_FOLDER_ID_DEFAULT
+    csv_filename = "cdsete_defect_library_generation_pbesol.csv"
+
+    file_info = find_file_in_folder_by_name(root_id, csv_filename)
+    if file_info is None:
+        return None
+
+    try:
+        csv_bytes = download_bytes(file_info["id"])
+        # Try gzip decompression first
+        try:
+            csv_content = gzip.decompress(csv_bytes).decode("utf-8")
+        except:
+            # If not gzipped, decode directly
+            csv_content = csv_bytes.decode("utf-8")
+
+        df = pd.read_csv(io.StringIO(csv_content))
+        return df
+    except Exception as e:
+        import streamlit as st
+        st.error(f"Error reading CSV file: {e}")
+        return None
