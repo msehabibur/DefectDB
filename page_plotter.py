@@ -107,7 +107,7 @@ def plot_formation_energy(df_to_plot: pd.DataFrame, compound_name: str, chem_pot
     
     # Add vertical dotted lines at x=0 and x=gap
     ax.axvline(x=0, linestyle='dotted', color='black')
-    ax.axvline(x=gap, linestyle='dotted', color='black')
+    ax.axvline(x=g, linestyle='dotted', color='black')
 
     # Shaded area from Y = -2 to Y = 0
     ax.fill_between(EF, -2, 0, color='grey', alpha=1)
@@ -116,10 +116,10 @@ def plot_formation_energy(df_to_plot: pd.DataFrame, compound_name: str, chem_pot
     x1 = np.arange(-10, 0.01,  0.01)
     ax.fill_between(x1, -100, 100, facecolor='lightgrey', alpha=0.3)
     # Shaded CB region
-    x2 = np.arange(gap, 10.0,  0.01)
+    x2 = np.arange(g, 10.0,  0.01)
     ax.fill_between(x2, -100, 100, facecolor='lightgrey', alpha=0.3)
     # Shaded Gap region
-    x3 = np.arange(0.0, gap,  0.01)
+    x3 = np.arange(0.0, g,  0.01)
     ax.fill_between(x3, -100, 100, facecolor='lightyellow', alpha=0.3)
 
     ax.set_xlabel('Fermi Level (eV)', fontname='sans-serif', size=22, labelpad=8)
@@ -128,7 +128,7 @@ def plot_formation_energy(df_to_plot: pd.DataFrame, compound_name: str, chem_pot
     plt.rc('ytick', labelsize=22)
     
     # Set limits and ticks based on your script
-    ax.set_xlim([-0.2, gap + 0.2])
+    ax.set_xlim([-0.2, g + 0.2])
     
     # Use calculated y-min/max if available, else default
     ymin = min(all_ymin) if all_ymin else -0.2
@@ -136,7 +136,7 @@ def plot_formation_energy(df_to_plot: pd.DataFrame, compound_name: str, chem_pot
     # Use your script's y-range logic
     ax.set_ylim([max(ymin, -0.2), min(ymax, 1.5)]) 
     
-    ax.set_xticks([0.0, np.round(gap / 2, 2), np.round(gap, 2)])
+    ax.set_xticks([0.0, np.round(g / 2, 2), np.round(g, 2)])
     ax.set_yticks([0, 0.5, 1, 1.5])
     
     if count > 0:
