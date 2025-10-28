@@ -6,7 +6,7 @@ import httplib2
 import certifi
 
 # Import our new modules
-from defect_utils import load_excel_data, ROOT_FOLDER_ID_DEFAULT
+from defect_utils import load_csv_data, ROOT_FOLDER_ID_DEFAULT
 from page_plotter import render_plotter_page
 
 # ── Config & SSL ─────────────────────────────────────────────────────────────
@@ -21,16 +21,15 @@ with st.sidebar:
     st.header("Data Source")
     root_id = st.text_input("Root Folder ID", value=ROOT_FOLDER_ID_DEFAULT)
     
-    if st.button("Scan Root for Excel File"):
-        # --- FILENAME UPDATED HERE ---
-        with st.spinner("Scanning Google Drive for 'cdsete_defect_library_generation_pbesol'..."):
+    if st.button("Scan Root for CSV File"):
+        with st.spinner("Scanning Google Drive for 'cdsete_defect_library_generation_pbesol.csv'..."):
             try:
-                data = load_excel_data(root_id)
+                data = load_csv_data(root_id) # Updated function call
                 if data is None:
-                    st.error("File 'cdsete_defect_library_generation_pbesol' not found in root.")
+                    st.error("File 'cdsete_defect_library_generation_pbesol.csv' not found in root.")
                     st.session_state["defect_data"] = None
                 else:
-                    st.success("Loaded defect data from Excel file.")
+                    st.success("Loaded defect data from CSV file.")
                     st.session_state["defect_data"] = data
             
             except Exception as e:
