@@ -5,13 +5,14 @@ app.py: Streamlit interface for the DefectDB Studio application.
 Purpose: Interactive database viewer and visualizer for semiconductor defect datasets.
 """
 
-# ─── Environment Setup (prevents crashes & reload loops) ──────────────────────
 import os
-os.environ["STREAMLIT_WATCHDOG_ENABLED"] = "false"
-os.environ["STREAMLIT_SERVER_HEADLESS"] = "true"
 os.environ["STREAMLIT_SERVER_FILE_WATCHER_TYPE"] = "none"
 os.environ["STREAMLIT_SERVER_RUN_ON_SAVE"] = "false"
+os.environ["STREAMLIT_WATCHDOG_ENABLED"] = "false"
+os.environ["STREAMLIT_SERVER_HEADLESS"] = "true"
 os.environ["STREAMLIT_SERVER_ENABLE_STATIC_SERVING"] = "false"
+os.environ["STREAMLIT_BROWSER_GATHER_USAGE_STATS"] = "false"
+
 
 # ─── Core Imports ─────────────────────────────────────────────────────────────
 import ssl
