@@ -5,21 +5,27 @@ app.py: Streamlit interface for the DefectDB Studio application.
 Purpose: Interactive database viewer and visualizer for semiconductor defect datasets.
 """
 
+# ─── Environment Setup (prevents crashes & reload loops) ──────────────────────
+import os
+os.environ["STREAMLIT_WATCHDOG_ENABLED"] = "false"
+os.environ["STREAMLIT_SERVER_HEADLESS"] = "true"
+os.environ["STREAMLIT_SERVER_FILE_WATCHER_TYPE"] = "none"
+os.environ["STREAMLIT_SERVER_RUN_ON_SAVE"] = "false"
+os.environ["STREAMLIT_SERVER_ENABLE_STATIC_SERVING"] = "false"
+
+# ─── Core Imports ─────────────────────────────────────────────────────────────
 import ssl
 import certifi
 import httplib2
 import streamlit as st
 from rich.console import Console
 from rich.traceback import install as install_rich_traceback
-import os
-os.environ["STREAMLIT_WATCHDOG_ENABLED"] = "false"
 
 # ─── Local Modules ────────────────────────────────────────────────────────────
 from defect_utils import (
     ROOT_FOLDER_ID_DEFAULT,
     load_csv_data,
 )
-from page_home import render_home_page
 from page_plotter import render_plotter_page
 from page_structures import render_structures_page
 
@@ -87,7 +93,7 @@ with tab_about:
     st.info(
         "DefectDB Studio enables researchers to browse, visualize, and analyze defect data "
         "collected from high-throughput DFT and ML workflows. It provides an intuitive interface "
-        "to explore formation energies, charge transition levels, and structural relaxations.",
+        "to explore formation energies, charge-transition levels, and structural relaxations.",
         icon="🔬"
     )
 
@@ -96,8 +102,8 @@ with tab_about:
 
     with st.expander("📁 **1️⃣ Data Integration**", expanded=True):
         st.markdown("""
-        - The app connects to a specified **Google Drive folder** and automatically searches for the dataset file  
-          `cdsete_defect_library_generation_pbesol.csv`.
+        - The app connects to a specified **Google Drive folder** and automatically searches for  
+          the dataset file `cdsete_defect_library_generation_pbesol.csv`.
         - Once loaded, the data is cached for faster re-rendering and interactive exploration.
         """)
 
@@ -118,9 +124,9 @@ with tab_about:
     st.markdown("---")
     st.header("💡 Purpose and Vision")
     st.markdown("""
-    **DefectDB Studio** is designed to:
+    **DefectDB Studio** is designed to:  
     - Democratize access to curated defect datasets for **semiconductors** and **chalcogenides**.  
-    - Accelerate discovery of **defect-tolerant materials** for renewable energy applications.  
+    - Accelerate discovery of **defect-tolerant materials** for renewable-energy applications.  
     - Provide **AI-ready exports** for downstream machine-learning workflows.  
     - Foster **FAIR (Findable, Accessible, Interoperable, Reusable)** data practices in defect informatics.
     """)
