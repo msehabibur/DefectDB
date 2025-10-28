@@ -26,7 +26,6 @@ from rich.traceback import install as install_rich_traceback
 from defect_utils import (
     ROOT_FOLDER_ID_DEFAULT,
     load_csv_data,
-    format_compound_latex,
 )
 from page_plotter import render_plotter_page
 from page_structures import render_structures_page

@@ -201,36 +201,47 @@ def format_compound_latex(compound_name: str) -> str:
         CdTe -> CdTe (unchanged)
     """
     import re
-    # Pattern to match numbers (including decimals) that should be subscripted
-    pattern = r'(\d+\.?\d*)'
 
-    def replace_numbers(match):
-        num = match.group(1)
-        # Only subscript if it's a decimal or if it makes sense compositionally
-        if '.' in num or (len(num) == 1 and int(num) < 10):
-            return f'$_{{{num}}}$'
-        return num
+    if not compound_name:
+        return compound_name
 
-    # Split by element boundaries (capital letters)
-    parts = re.split(r'(?=[A-Z])', compound_name)
-    formatted_parts = []
+    try:
+        # Pattern to match numbers (including decimals) that should be subscripted
+        pattern = r'(\d+\.?\d*)'
 
-    for part in parts:
-        if not part:
-            continue
-        # Find element and numbers
-        match = re.match(r'([A-Z][a-z]?)(.*)$', part)
-        if match:
-            element = match.group(1)
-            rest = match.group(2)
-            if rest and re.match(r'^\d', rest):
-                # Has a number following, subscript it
-                rest = re.sub(pattern, replace_numbers, rest)
-            formatted_parts.append(element + rest)
-        else:
-            formatted_parts.append(part)
+        def replace_numbers(match):
+            num = match.group(1)
+            try:
+                # Only subscript if it's a decimal or if it makes sense compositionally
+                if '.' in num or (len(num) == 1 and int(num) < 10):
+                    return f'$_{{{num}}}$'
+            except (ValueError, TypeError):
+                pass
+            return num
 
-    return ''.join(formatted_parts)
+        # Split by element boundaries (capital letters)
+        parts = re.split(r'(?=[A-Z])', compound_name)
+        formatted_parts = []
+
+        for part in parts:
+            if not part:
+                continue
+            # Find element and numbers
+            match = re.match(r'([A-Z][a-z]?)(.*)$', part)
+            if match:
+                element = match.group(1)
+                rest = match.group(2)
+                if rest and re.match(r'^\d', rest):
+                    # Has a number following, subscript it
+                    rest = re.sub(pattern, replace_numbers, rest)
+                formatted_parts.append(element + rest)
+            else:
+                formatted_parts.append(part)
+
+        return ''.join(formatted_parts)
+    except Exception:
+        # If anything goes wrong, return the original name
+        return compound_name
 
 
 # ────────────────────────────────────────────────
