@@ -11,6 +11,8 @@ import httplib2
 import streamlit as st
 from rich.console import Console
 from rich.traceback import install as install_rich_traceback
+import os
+os.environ["STREAMLIT_WATCHDOG_ENABLED"] = "false"
 
 # ─── Local Modules ────────────────────────────────────────────────────────────
 from defect_utils import (
