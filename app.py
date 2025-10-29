@@ -31,7 +31,7 @@ from ai_tool import gpt_query  # ✅ AI import
 # ─── SSL & Config ─────────────────────────────────────────────────────────────
 install_rich_traceback(show_locals=False)
 console = Console()
-st.set_page_config(page_title="DefectDB Studio", layout="wide", page_icon="🧪")
+st.set_page_config(page_title="DefectDB Studio ☀️🔋", layout="wide", page_icon="☀️")
 
 httplib2.CA_CERTS = certifi.where()
 ssl.create_default_context(cafile=certifi.where())
@@ -71,7 +71,7 @@ root_folder_for_structures = st.session_state.get("root_folder_id", root_id)
 
 # ─── Main Tabs ────────────────────────────────────────────────────────────────
 tab_about, tab_data, tab_plot, tab_structures, tab_ai = st.tabs([
-    "💡 About DefectDB Studio",
+    "💡 About DefectDB Studio ☀️🔋",
     "📂 Defect Dataset Viewer",
     "📈 Formation Energy Plotter",
     "🧱 Optimized Structures",
@@ -80,21 +80,25 @@ tab_about, tab_data, tab_plot, tab_structures, tab_ai = st.tabs([
 
 # ─── ABOUT TAB ────────────────────────────────────────────────────────────────
 with tab_about:
-    st.title("🧪 DefectDB Studio")
+    st.title("☀️🔋 DefectDB Studio")
     st.subheader("An Interactive Database and Visualization Platform for Defect Thermodynamics in Cd–Se–Te")
 
     with st.container(border=True):
         st.markdown("""
         **Md Habibur Rahman**, **Yi Yang**, and **Arun Mannodi-Kanakkithodi**  
         *School of Materials Engineering, Purdue University*  
-        *West Lafayette, IN 47907, USA*
+        *West Lafayette, IN 47907, USA*  
+
+        📧 **Contact:**  
+        - Md Habibur Rahman — [rahma103@purdue.edu](mailto:rahma103@purdue.edu)  
+        - Prof. Arun Mannodi-Kanakkithodi — [amannodi@purdue.edu](mailto:amannodi@purdue.edu)
         """)
 
     st.info(
         "DefectDB Studio enables researchers to browse, visualize, and analyze defect data "
         "collected from high-throughput DFT and ML workflows. It provides an intuitive interface "
         "to explore formation energies, charge-transition levels, and structural relaxations.",
-        icon="🔬"
+        icon="☀️"
     )
 
     # ─── Computational Workflow ───────────────────────────────────────────────
@@ -136,6 +140,20 @@ A comprehensive review covering DFT and ML techniques for studying vacancies, in
 *Md Habibur Rahman, Ishaanvi Agrawal, Arun Mannodi-Kanakkithodi*  
 **IEEE 53rd Photovoltaic Specialists Conference (PVSC)** · Pages 0717-0719 (2025)  
 Describes a workflow combining DFT, active learning, and GNNs (ALIGNN) to predict crystal formation energies for over 13 000 hypothetical defects in Cd/Zn–Se/Te alloys.  
+
+---
+
+**5. [Accelerating Defect Predictions in Semiconductors Using Graph Neural Networks](https://pubs.aip.org/aip/aml/article/2/1/016701/3254978)**  
+*Md Habibur Rahman, Prince Gollapalli, Panayotis Manganaris, Satyesh Kumar Yadav, Ghanshyam Pilania, Brian DeCost, Kamal Choudhary, Arun Mannodi-Kanakkithodi*  
+**APL Machine Learning**, Vol. 2, Issue 1 (2024) · AIP Publishing  
+Develops a GNN-powered framework for predicting and screening native defects and functional impurities across group IV, III–V, and II–VI semiconductors using one of the largest DFT-based defect datasets to date.  
+
+---
+
+**6. [Understanding Defect-Mediated Ion Migration in Semiconductors Using Atomistic Simulations and Machine Learning](https://pubs.acs.org/doi/10.1021/acsmaterialsau.4c00091)**  
+*Md Habibur Rahman, Maitreyo Biswas, Arun Mannodi-Kanakkithodi*  
+**ACS Materials Au**, Vol. 4, Issue 6, Pages 557–573 (2024) · American Chemical Society  
+A Perspective discussing mechanisms of defect-mediated ion migration in semiconductors, with emphasis on halide perovskites and methods to suppress phase segregation and migration via composition and strain tuning.  
         """)
 
 # ─── DATA TAB ─────────────────────────────────────────────────────────────────
@@ -239,4 +257,4 @@ Explain in a scientific yet clear manner for materials researchers."""
         else:
             st.error("❌ Dataset missing required columns ('AB' or 'Defect'). Please check your data source.")
 
-console.log("🧪 DefectDB Studio loaded successfully.")
+console.log("☀️🔋 DefectDB Studio loaded successfully.")
