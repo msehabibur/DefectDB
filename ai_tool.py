@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 ai_tool.py: Centralized AI utility module for DefectDB Studio.
-Adds Google Drive access + CSV downloading + GPT integration.
+Adds Google Drive access + CSV downloading + GPT integration (compatible with GPT-5 API).
 """
 
 import os
@@ -27,10 +27,14 @@ def _init_client():
         api_key = os.getenv("OPENAI_API_KEY")
 
     if not api_key:
-        st.warning("⚠️ Please add your OpenAI API key to `.streamlit/secrets.toml` or environment.")
+        st.warning("⚠️ Please add your OpenAI API key to `.streamlit/secrets.toml` or as an environment variable.")
         return None
 
-    return OpenAI(api_key=api_key)
+    try:
+        return OpenAI(api_key=api_key)
+    except Exception as e:
+        st.error(f"❌ Failed to initialize OpenAI client: {e}")
+        return None
 
 
 # ─── Google Drive Service Initialization ──────────────────────────────────────
@@ -42,7 +46,7 @@ def _init_drive_service():
     try:
         creds_dict = st.secrets["GOOGLE_SERVICE_ACCOUNT_JSON"]
     except KeyError:
-        st.warning("⚠️ Google Drive access not configured. Add service account JSON to secrets.")
+        st.warning("⚠️ Google Drive access not configured. Add service account JSON to secrets.toml.")
         return None
 
     try:
@@ -77,8 +81,10 @@ def load_google_drive_csvs(folder_id: str) -> dict:
     try:
         results = (
             service.files()
-            .list(q=f"'{folder_id}' in parents and mimeType='text/csv' and trashed=false",
-                  fields="files(id, name)")
+            .list(
+                q=f"'{folder_id}' in parents and mimeType='text/csv' and trashed=false",
+                fields="files(id, name)"
+            )
             .execute()
         )
         files = results.get("files", [])
@@ -153,11 +159,13 @@ def build_context_from_dataframes(dataframes: dict) -> str:
 def gpt_query(prompt: str, model: str = "gpt-5", context_data: dict = None) -> str:
     """
     Query GPT with optional context built from Drive/Local CSVs.
+    Compatible with new GPT-5 API (no unsupported params).
     """
     client = _init_client()
     if client is None:
         return "❌ Error: No valid OpenAI API key configured."
 
+    # Build textual context from any loaded DataFrames
     context_text = build_context_from_dataframes(context_data or {})
     full_prompt = f"Context:\n{context_text}\n\nUser Question:\n{prompt}"
 
@@ -176,8 +184,7 @@ def gpt_query(prompt: str, model: str = "gpt-5", context_data: dict = None) -> s
                 },
                 {"role": "user", "content": full_prompt},
             ],
-            temperature=0.4,
-            max_completion_tokens=800,  # Correct param name
+            max_completion_tokens=800,  # ✅ GPT-5 compatible
         )
 
         return response.choices[0].message.content.strip()
