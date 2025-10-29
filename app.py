@@ -91,7 +91,7 @@ with tab_about:
         """)
 
     st.info(
-        "DefectDB Studio enables researchers to browse, visualize, and analyze defect data "
+        "DefectDB Studio enables CdTe community to browse, visualize, and analyze defect data "
         "collected from high-throughput DFT and ML workflows. It provides an intuitive interface "
         "to explore formation energies, charge-transition levels, and structural relaxations.",
         icon="☀️"
@@ -120,7 +120,7 @@ A framework for predicting native point defects, impurities, and defect complexe
 Platform release on nanoHUB.org for automated defect generation, energetics computation, and ML-based analysis of CdSeTe defects.  
 
 ---
-**3. [Using Machine Learning to Explore Defect Configurations in Cd/Zn–Se/Te Compounds](https://ieeexplore.ieee.org/document/10512345)** *Md Habibur Rahman, Ishaanvi Agrawal, Arun Mannodi-Kanakkithodi* **IEEE 53rd Photovoltaic Specialists Conference (PVSC)** · Pages 0717-0719 (2025)  
+**3. [Using Machine Learning to Explore Defect Configurations in Cd/Zn–Se/Te Compounds](https://ieeexplore.ieee.org/abstract/document/11133092)** *Md Habibur Rahman, Ishaanvi Agrawal, Arun Mannodi-Kanakkithodi* **IEEE 53rd Photovoltaic Specialists Conference (PVSC)** · Pages 0717-0719 (2025)  
 Describes a workflow combining DFT, active learning, and GNNs (ALIGNN) to predict crystal formation energies for over 13 000 hypothetical defects in Cd/Zn–Se/Te alloys.  
 
 
