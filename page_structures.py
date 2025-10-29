@@ -77,33 +77,39 @@ def _parse_charge_label(label: str) -> str:
 
 
 def _visualize_structure(structure_blob: bytes, filename: str, compound: str, defect: str, charge: str):
-    """Visualize structure using ASE, converting POSCAR → CIF via Pymatgen."""
-    if not PYMATGEN_AVAILABLE:
-        st.warning("⚠️ ASE or pymatgen not installed. Visualization unavailable.")
-        return
+    """Visualize structure using ASE (CIF conversion via Pymatgen)."""
+    import pandas as pd
+    import matplotlib.pyplot as plt
+    from pymatgen.core import Structure
+    from pymatgen.io.cif import CifWriter
+    from ase.io import read
+    from ase.visualize.plot import plot_atoms
+    import tempfile
+    import os
 
     try:
-        # Decode file contents
+        # Decode raw file
         structure_text = structure_blob.decode("utf-8")
 
-        # Load with Pymatgen (CIF or POSCAR)
+        # Load structure using pymatgen (CIF or POSCAR)
         fmt = "cif" if filename.lower().endswith(".cif") else "poscar"
         structure = Structure.from_str(structure_text, fmt=fmt)
 
-        # Convert to CIF in-memory for ASE visualization
-        from io import StringIO
-        cif_buffer = StringIO()
-        cif_writer = CifWriter(structure)
-        cif_writer.write_file(cif_buffer)
-        cif_data = cif_writer.__str__()
-        cif_temp = StringIO(cif_data)
+        # --- Convert to temporary CIF file for ASE ---
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".cif") as tmp_cif:
+            writer = CifWriter(structure)
+            writer.write_file(tmp_cif.name)
+            tmp_path = tmp_cif.name
 
-        # Load CIF via ASE
-        atoms = read(cif_temp, format="cif")
+        # Load CIF using ASE
+        atoms = read(tmp_path, format="cif")
 
+        # Clean up temporary file
+        os.remove(tmp_path)
+
+        # --- Display structure info ---
         st.success(f"✅ Structure loaded: {structure.composition.reduced_formula}")
 
-        # === Structure information ===
         with st.expander("📊 Structure Information", expanded=True):
             col1, col2, col3 = st.columns(3)
             with col1:
@@ -118,7 +124,7 @@ def _visualize_structure(structure_blob: bytes, filename: str, compound: str, de
                 st.metric("b (Å)", f"{lat.b:.3f}")
                 st.metric("c (Å)", f"{lat.c:.3f}")
 
-        # === ASE Visualization ===
+        # --- ASE Visualization ---
         st.subheader("🔬 Crystal Structure (ASE Visualization)")
 
         fig, ax = plt.subplots(figsize=(6, 6))
@@ -126,27 +132,28 @@ def _visualize_structure(structure_blob: bytes, filename: str, compound: str, de
         ax.set_title(f"{compound} | {defect} | Charge {charge}", fontsize=12)
         st.pyplot(fig)
 
-        # === Lattice parameters ===
+        # --- Lattice parameters ---
         with st.expander("📐 Lattice Parameters", expanded=False):
             st.write(f"**a** = {lat.a:.3f} Å, **b** = {lat.b:.3f} Å, **c** = {lat.c:.3f} Å")
             st.write(f"**α** = {lat.alpha:.2f}°, **β** = {lat.beta:.2f}°, **γ** = {lat.gamma:.2f}°")
 
-        # === Atomic positions ===
+        # --- Atomic positions ---
         with st.expander("⚛️ Atomic Positions", expanded=False):
-            positions = []
-            for site in structure:
-                positions.append({
+            df = pd.DataFrame(
+                [{
                     "Element": site.species_string,
                     "x": f"{site.frac_coords[0]:.6f}",
                     "y": f"{site.frac_coords[1]:.6f}",
                     "z": f"{site.frac_coords[2]:.6f}",
-                })
-            st.dataframe(pd.DataFrame(positions), use_container_width=True)
+                } for site in structure]
+            )
+            st.dataframe(df, use_container_width=True)
 
     except Exception as e:
         st.error(f"❌ Error visualizing structure: {e}")
         with st.expander("📄 Raw Structure File", expanded=True):
             st.code(structure_blob.decode("utf-8"), language="text")
+
 
 
 def render_structures_page(root_folder_id: str = ROOT_FOLDER_ID_DEFAULT):
