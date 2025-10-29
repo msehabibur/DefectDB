@@ -4,6 +4,7 @@ google-auth
 google-auth-httplib2
 pandas
 numpy
+openai>=1.1.0
 pymatgen
 ase
 certifi
