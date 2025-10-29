@@ -54,7 +54,7 @@ def hf_query(prompt: str, model: str = "mistralai/Mistral-7B-Instruct-v0.2") -> 
         The generated text response
     """
     try:
-        HF_API_TOKEN = st.secrets.get("HF_API_TOKEN")
+        HF_API_TOKEN = st.secrets.get("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")
         if not HF_API_TOKEN:
             return "❌ Error: HF_API_TOKEN not found in secrets. Please configure it in .streamlit/secrets.toml"
 
