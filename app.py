@@ -29,7 +29,7 @@ from defect_utils import (
 )
 from page_plotter import render_plotter_page
 from page_structures import render_structures_page
-from ai_tool import gpt_query  # <-- ✅ imported AI logic here
+from ai_tool import gpt_query  # ✅ new import
 
 # ─── SSL & Config ─────────────────────────────────────────────────────────────
 install_rich_traceback(show_locals=False)
@@ -153,7 +153,7 @@ with tab_ai:
                 height=80
             )
 
-            if st.button("🚀 Ask AI", type="primary"):  # ✅ renamed
+            if st.button("🚀 Ask AI", type="primary"):
                 with st.spinner("Contacting AI model..."):
                     if selected_compound and selected_defect:
                         mask = (defect_data["AB"] == selected_compound) & (defect_data["Defect"] == selected_defect)
@@ -188,7 +188,8 @@ Explain in a scientific yet clear manner for materials researchers."""
                     else:
                         prompt = custom_query or "Explain defect formation in semiconductors."
 
-                    result = gpt_query(prompt)  # ✅ uses ai_tool.py now
+                    # ✅ Uses the gpt_query function from ai_tool.py
+                    result = gpt_query(prompt)
 
                     st.subheader("📝 AI Response")
                     with st.container(border=True):
@@ -198,4 +199,6 @@ Explain in a scientific yet clear manner for materials researchers."""
                         st.code(prompt, language="text")
 
         else:
-            st.error("❌ Dataset missing required columns ('AB' or 'Defect'). Pl
+            st.error("❌ Dataset missing required columns ('AB' or 'Defect'). Please check your data source.")
+
+console.log("🧪 DefectDB Studio loaded successfully.")
