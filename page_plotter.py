@@ -26,6 +26,7 @@ def _coerce_float(x):
     except Exception:
         return np.nan
 
+
 def _format_compound_latex(compound_name: str) -> str:
     """Convert compound names to LaTeX format with subscripts."""
     import re
@@ -65,6 +66,7 @@ def _format_compound_latex(compound_name: str) -> str:
     except Exception:
         return compound_name
 
+
 # ── Plotting Function ────────────────────────────────────────────────────────
 def plot_formation_energy(df_to_plot: pd.DataFrame, compound_name: str, chem_pot: str, chem_pot_col: str):
     """
@@ -94,19 +96,8 @@ def plot_formation_energy(df_to_plot: pd.DataFrame, compound_name: str, chem_pot
     )
 
     colors = [
-        "red",
-        "b",
-        "g",
-        "c",
-        "black",
-        "mediumpurple",
-        "darkorange",
-        "saddlebrown",
-        "m",
-        "darkkhaki",
-        "dodgerblue",
-        "grey",
-        "salmon",
+        "red", "b", "g", "c", "black", "mediumpurple", "darkorange",
+        "saddlebrown", "m", "darkkhaki", "dodgerblue", "grey", "salmon",
     ]
     count = 0
     EF = np.arange(-0.5, gap + 0.5, 0.01)
@@ -180,7 +171,6 @@ def plot_formation_energy(df_to_plot: pd.DataFrame, compound_name: str, chem_pot
     ax.axvline(x=gap, linestyle="dotted", color="black")
     ax.fill_between(EF, -2, 0, color="grey", alpha=1)
 
-    # Regions
     x1 = np.arange(-10, 0.01, 0.01)
     ax.fill_between(x1, -100, 100, facecolor="lightgrey", alpha=0.3)
     x2 = np.arange(gap, 10.0, 0.01)
@@ -194,7 +184,6 @@ def plot_formation_energy(df_to_plot: pd.DataFrame, compound_name: str, chem_pot
     plt.rc("ytick", labelsize=22)
     ax.set_xlim([-0.2, gap + 0.2])
 
-    # Auto-scale Y-axis based on selected defects: 0 to (max + 0.5 eV)
     if all_ymax:
         ymax_limit = max(all_ymax) + 0.5
     else:
@@ -202,7 +191,6 @@ def plot_formation_energy(df_to_plot: pd.DataFrame, compound_name: str, chem_pot
     ax.set_ylim([0, ymax_limit])
 
     ax.set_xticks([0.0, np.round(gap / 2, 2), np.round(gap, 2)])
-    # Dynamically set y-ticks based on the range
     if ymax_limit <= 2.0:
         ax.set_yticks(np.arange(0, ymax_limit + 0.5, 0.5))
     else:
@@ -231,6 +219,7 @@ def plot_formation_energy(df_to_plot: pd.DataFrame, compound_name: str, chem_pot
 
     plt.close(fig)
 
+
 # ── UI Wrapper ───────────────────────────────────────────────────────────────
 def render_plotter_page(df: pd.DataFrame):
     st.header("📊 Plotter Controls")
@@ -249,14 +238,9 @@ def render_plotter_page(df: pd.DataFrame):
         st.error(f"File missing required columns: {', '.join(required_cols)}")
         return
 
-    compound_list = df["AB"].unique()
-    # Create formatted display names for compounds
-    compound_display = {comp: _format_compound_latex(comp) for comp in compound_list}
-    formatted_compounds = [compound_display[comp] for comp in compound_list]
-
-    comp_sel_formatted = st.selectbox("1️⃣ Select a Compound", formatted_compounds)
-    # Get the original compound name
-    comp_sel = [k for k, v in compound_display.items() if v == comp_sel_formatted][0]
+    # ── Compound Dropdown (Plain Text, No LaTeX) ─────────────────────────────
+    compound_list = sorted(df["AB"].unique())
+    comp_sel = st.selectbox("1️⃣ Select a Compound", compound_list)
 
     df_comp = df[df["AB"] == comp_sel].copy()
 
@@ -277,7 +261,7 @@ def render_plotter_page(df: pd.DataFrame):
         if df_plot.empty:
             st.warning("No data found for the selected defects.")
         else:
-            st.subheader(f"Formation Energy Plot: {comp_sel_formatted}")
+            st.subheader(f"Formation Energy Plot: {comp_sel}")
             plot_formation_energy(
                 df_plot,
                 compound_name=comp_sel,
