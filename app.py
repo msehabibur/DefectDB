@@ -23,13 +23,10 @@ from rich.console import Console
 from rich.traceback import install as install_rich_traceback
 
 # ─── Local Modules ────────────────────────────────────────────────────────────
-from defect_utils import (
-    ROOT_FOLDER_ID_DEFAULT,
-    load_csv_data,
-)
+from defect_utils import ROOT_FOLDER_ID_DEFAULT, load_csv_data
 from page_plotter import render_plotter_page
 from page_structures import render_structures_page
-from ai_tool import gpt_query  # ✅ new import
+from ai_tool import gpt_query  # ✅ AI import
 
 # ─── SSL & Config ─────────────────────────────────────────────────────────────
 install_rich_traceback(show_locals=False)
@@ -99,6 +96,47 @@ with tab_about:
         "to explore formation energies, charge-transition levels, and structural relaxations.",
         icon="🔬"
     )
+
+    # ─── Computational Workflow ───────────────────────────────────────────────
+    st.markdown("""
+    #### ⚛️ Computational Workflow
+    The defect and alloy configurations in this database were first generated using the **Shake-and-Break** method, which systematically perturbs atomic positions to explore diverse local minima and break potential symmetries in defective structures. These candidate structures were then optimized using **Machine Learning Force Fields (MLFFs)** trained on high-throughput DFT data to efficiently reach low-energy configurations.  
+    Subsequently, all MLFF-optimized structures were refined at the **Density Functional Theory (DFT)** level using the **PBESol** exchange–correlation functional to ensure accurate energies, geometries, and defect formation thermodynamics.  
+    This multistage approach — *Shake-and-Break → MLFF relaxation → PBESol refinement* — enables robust exploration of defect landscapes while drastically reducing computational cost compared to pure DFT-based searches.
+    """)
+
+    # ─── References Section ───────────────────────────────────────────────────
+    st.markdown("---")
+    st.markdown("### 📚 Related Publications & References")
+
+    with st.container(border=True):
+        st.markdown("""
+**1. [DeFecT-FF: Accelerated Modeling of Defects in Cd–Zn–Te–Se–S Compounds Combining High-Throughput DFT and Machine Learning Force Fields](https://doi.org/10.48550/arXiv.2510.23514)**  
+*Md Habibur Rahman, Arun Mannodi-Kanakkithodi*  
+**arXiv:** 2510.23514 · **Submitted:** 27 Oct 2025  
+A framework for predicting native point defects, impurities, and defect complexes in Cd/Zn-Te/Se/S semiconductors using active-learning-trained ML force fields (MLFFs). Available as a **nanoHUB** tool enabling rapid screening of low-energy defect configurations.  
+
+---
+
+**2. [Introducing CADeT-FF for Accelerated Modeling of Defect Thermodynamics in CdSeTe Solar Cells](https://nanohub.org/tools/cadetff)**  
+*Md Habibur Rahman, Arun Mannodi-Kanakkithodi*  
+**Publication date:** 2025/8/8  
+Platform release on nanoHUB.org for automated defect generation, energetics computation, and ML-based analysis of CdSeTe defects.  
+
+---
+
+**3. [Defect Modeling in Semiconductors: The Role of First-Principles Simulations and Machine Learning](https://doi.org/10.1088/2515-7639/ad7f1b)**  
+*Md Habibur Rahman, Arun Mannodi-Kanakkithodi*  
+**Journal of Physics: Materials**, Vol. 8, Issue 2, 022001 (2025) · IOP Publishing  
+A comprehensive review covering DFT and ML techniques for studying vacancies, interstitials, substitutionals, and defect complexes in semiconductors.  
+
+---
+
+**4. [Using Machine Learning to Explore Defect Configurations in Cd/Zn–Se/Te Compounds](https://ieeexplore.ieee.org/document/10512345)**  
+*Md Habibur Rahman, Ishaanvi Agrawal, Arun Mannodi-Kanakkithodi*  
+**IEEE 53rd Photovoltaic Specialists Conference (PVSC)** · Pages 0717-0719 (2025)  
+Describes a workflow combining DFT, active learning, and GNNs (ALIGNN) to predict crystal formation energies for over 13 000 hypothetical defects in Cd/Zn–Se/Te alloys.  
+        """)
 
 # ─── DATA TAB ─────────────────────────────────────────────────────────────────
 with tab_data:
