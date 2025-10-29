@@ -87,7 +87,7 @@ with tab_about:
     with st.container(border=True):
         st.markdown("""
         **Md Habibur Rahman**, **Yi Yang**, and **Arun Mannodi-Kanakkithodi** *School of Materials Engineering, Purdue University* *West Lafayette, IN 47907, USA* 📧 **Contact:** - Md Habibur Rahman — [rahma103@purdue.edu](mailto:rahma103@purdue.edu)  
-        - Prof. Arun Mannodi-Kanakkithodi — [amannodi@purdue.edu](mailto:amannodi@purdue.edu and https://www.mannodigroup.com/)
+        - Prof. Arun Mannodi-Kanakkithodi — [amannodi@purdue.edu](mailto:amannodi@purdue.edu)
         """)
 
     st.info(
