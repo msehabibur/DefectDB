@@ -253,8 +253,7 @@ with tab_next:
 
     2. **Integrate XANES Spectra via FEFF9** For each optimized structure, compute **X-ray Absorption Near Edge Structure (XANES)** using the FEFF9 software. This will provide element-specific electronic and local structural fingerprints for each defect.  
 
-    3. **Fitting to Experimental Signatures** Establish a machine learning–based inverse mapping (maybe?), for example  where **input → experimental XANES or defect-level spectra**, and **output → most probable defects** responsible for the observed features.  
-        This will allow DefectDB Studio to serve as an intelligent platform that bridges theory and experiment for defect identification and validation.
+    3. **Fitting to Experimental Signatures** Establish a machine learning–based inverse mapping (maybe?), for example  where **input → experimental XANES or defect-level spectra**, and **output → most probable defects** responsible for the observed features. This will allow DefectDB Studio to serve as an intelligent platform that bridges theory and experiment for defect identification and validation.
     """)
 
 console.log("☀️🔋 DefectDB Studio loaded successfully.")
