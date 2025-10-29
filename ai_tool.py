@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 ai_tool.py: Centralized AI utility module for DefectDB Studio.
-Adds Google Drive access + CSV downloading + GPT integration (compatible with GPT-5 API).
+Adds Google Drive access + CSV downloading + GPT integration (GPT-5 compatible).
 """
 
 import os
@@ -17,9 +17,7 @@ from google.oauth2 import service_account
 
 # ─── GPT Client Initialization ────────────────────────────────────────────────
 def _init_client():
-    """
-    Initialize OpenAI client from Streamlit secrets or environment variables.
-    """
+    """Initialize OpenAI client from secrets or environment variables."""
     api_key = None
     try:
         api_key = st.secrets["OPENAI_API_KEY"]
@@ -27,7 +25,7 @@ def _init_client():
         api_key = os.getenv("OPENAI_API_KEY")
 
     if not api_key:
-        st.warning("⚠️ Please add your OpenAI API key to `.streamlit/secrets.toml` or as an environment variable.")
+        st.warning("⚠️ Please add your OpenAI API key to `.streamlit/secrets.toml` or environment.")
         return None
 
     try:
@@ -39,10 +37,7 @@ def _init_client():
 
 # ─── Google Drive Service Initialization ──────────────────────────────────────
 def _init_drive_service():
-    """
-    Initialize Google Drive service using credentials stored in Streamlit secrets.
-    Expect a `GOOGLE_SERVICE_ACCOUNT_JSON` entry in secrets.toml.
-    """
+    """Initialize Google Drive API service using credentials in secrets.toml."""
     try:
         creds_dict = st.secrets["GOOGLE_SERVICE_ACCOUNT_JSON"]
     except KeyError:
@@ -52,10 +47,9 @@ def _init_drive_service():
     try:
         creds = service_account.Credentials.from_service_account_info(
             creds_dict,
-            scopes=["https://www.googleapis.com/auth/drive.readonly"]
+            scopes=["https://www.googleapis.com/auth/drive.readonly"],
         )
-        service = build("drive", "v3", credentials=creds)
-        return service
+        return build("drive", "v3", credentials=creds)
     except Exception as e:
         st.error(f"❌ Failed to initialize Google Drive API: {e}")
         return None
@@ -63,89 +57,69 @@ def _init_drive_service():
 
 # ─── Download CSV Files from Google Drive ─────────────────────────────────────
 def load_google_drive_csvs(folder_id: str) -> dict:
-    """
-    Scan a Google Drive folder for CSV files and download them as DataFrames.
-
-    Args:
-        folder_id (str): Google Drive folder ID.
-
-    Returns:
-        dict[str, pd.DataFrame]: {filename: DataFrame}
-    """
+    """Download all CSV files in a Drive folder into pandas DataFrames."""
     service = _init_drive_service()
     if service is None:
         return {}
 
     csvs = {}
-
     try:
         results = (
             service.files()
             .list(
                 q=f"'{folder_id}' in parents and mimeType='text/csv' and trashed=false",
-                fields="files(id, name)"
+                fields="files(id, name)",
             )
             .execute()
         )
         files = results.get("files", [])
-
         if not files:
-            st.info("ℹ️ No CSV files found in the specified Google Drive folder.")
+            st.info("ℹ️ No CSV files found in this Google Drive folder.")
             return {}
 
-        for file in files:
-            file_id = file["id"]
-            file_name = file["name"]
-            request = service.files().get_media(fileId=file_id)
+        for f in files:
+            fid, name = f["id"], f["name"]
+            request = service.files().get_media(fileId=fid)
             fh = io.BytesIO()
             downloader = MediaIoBaseDownload(fh, request)
-
             done = False
             while not done:
                 status, done = downloader.next_chunk()
-
             fh.seek(0)
             try:
                 df = pd.read_csv(fh)
-                csvs[file_name.replace(".csv", "")] = df
-                st.success(f"✅ Downloaded {file_name} ({len(df)} rows)")
+                csvs[name.replace(".csv", "")] = df
+                st.success(f"✅ Downloaded {name} ({len(df)} rows)")
             except Exception as e:
-                st.warning(f"⚠️ Could not read {file_name}: {e}")
-
+                st.warning(f"⚠️ Could not read {name}: {e}")
     except Exception as e:
-        st.error(f"❌ Error reading from Google Drive: {e}")
+        st.error(f"❌ Google Drive error: {e}")
 
     return csvs
 
 
 # ─── Load Local CSVs ──────────────────────────────────────────────────────────
 def load_local_csvs(folder: str = "./data") -> dict:
-    """
-    Load all CSV files from a local folder.
-    """
+    """Load all CSV files from a local folder."""
     csvs = {}
-    folder_path = os.path.expanduser(folder)
-
-    if not os.path.exists(folder_path):
-        st.info(f"ℹ️ No local data folder found at {folder_path}")
+    path = os.path.expanduser(folder)
+    if not os.path.exists(path):
+        st.info(f"ℹ️ No local data folder found at {path}")
         return csvs
 
-    for file in os.listdir(folder_path):
+    for file in os.listdir(path):
         if file.endswith(".csv"):
             try:
-                df = pd.read_csv(os.path.join(folder_path, file))
+                df = pd.read_csv(os.path.join(path, file))
                 csvs[file.replace(".csv", "")] = df
             except Exception as e:
                 st.warning(f"⚠️ Could not load {file}: {e}")
-
     return csvs
 
 
-# ─── Build Context for GPT ────────────────────────────────────────────────────
+# ─── Build Context from CSVs ──────────────────────────────────────────────────
 def build_context_from_dataframes(dataframes: dict) -> str:
-    """
-    Create a short summary string from DataFrames to help GPT understand context.
-    """
+    """Summarize loaded CSVs to provide GPT context."""
     if not dataframes:
         return "No CSV datasets loaded."
     summaries = []
@@ -158,14 +132,13 @@ def build_context_from_dataframes(dataframes: dict) -> str:
 # ─── GPT Query ────────────────────────────────────────────────────────────────
 def gpt_query(prompt: str, model: str = "gpt-5", context_data: dict = None) -> str:
     """
-    Query GPT with optional context built from Drive/Local CSVs.
-    Compatible with new GPT-5 API (no unsupported params).
+    Query GPT-5 with optional context from Drive/Local CSVs.
+    Handles new SDK response format (output_text).
     """
     client = _init_client()
     if client is None:
         return "❌ Error: No valid OpenAI API key configured."
 
-    # Build textual context from any loaded DataFrames
     context_text = build_context_from_dataframes(context_data or {})
     full_prompt = f"Context:\n{context_text}\n\nUser Question:\n{prompt}"
 
@@ -184,10 +157,16 @@ def gpt_query(prompt: str, model: str = "gpt-5", context_data: dict = None) -> s
                 },
                 {"role": "user", "content": full_prompt},
             ],
-            max_completion_tokens=800,  # ✅ GPT-5 compatible
+            max_completion_tokens=800,
         )
 
-        return response.choices[0].message.content.strip()
+        # ✅ Handle both new & legacy response structures
+        if hasattr(response, "output_text") and response.output_text:
+            return response.output_text.strip()
+        elif response.choices and hasattr(response.choices[0], "message"):
+            return response.choices[0].message.content.strip()
+        else:
+            return "⚠️ No text output returned by the AI model."
 
     except Exception as e:
         return f"❌ Error from GPT API: {e}"
