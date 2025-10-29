@@ -18,7 +18,9 @@ os.environ["STREAMLIT_BROWSER_GATHER_USAGE_STATS"] = "false"
 import ssl
 import certifi
 import httplib2
+import pandas as pd
 import streamlit as st
+import requests
 from rich.console import Console
 from rich.traceback import install as install_rich_traceback
 
@@ -38,6 +40,54 @@ st.set_page_config(page_title="DefectDB Studio", layout="wide", page_icon="🧪"
 httplib2.CA_CERTS = certifi.where()
 ssl.create_default_context(cafile=certifi.where())
 console.log("✅ Streamlit configuration initialised.")
+
+# ─── AI Integration Functions ─────────────────────────────────────────────────
+def hf_query(prompt: str, model: str = "mistralai/Mistral-7B-Instruct-v0.2") -> str:
+    """
+    Query Hugging Face Inference API with a prompt.
+
+    Args:
+        prompt: The input prompt for the model
+        model: The Hugging Face model to use
+
+    Returns:
+        The generated text response
+    """
+    try:
+        HF_API_TOKEN = st.secrets.get("HF_API_TOKEN")
+        if not HF_API_TOKEN:
+            return "❌ Error: HF_API_TOKEN not found in secrets. Please configure it in .streamlit/secrets.toml"
+
+        headers = {"Authorization": f"Bearer {HF_API_TOKEN}"}
+        payload = {
+            "inputs": prompt,
+            "parameters": {
+                "max_new_tokens": 250,
+                "temperature": 0.7,
+                "top_p": 0.9,
+                "return_full_text": False
+            }
+        }
+
+        response = requests.post(
+            f"https://api-inference.huggingface.co/models/{model}",
+            headers=headers,
+            json=payload,
+            timeout=30
+        )
+
+        if response.status_code == 200:
+            result = response.json()
+            if isinstance(result, list) and len(result) > 0:
+                return result[0].get("generated_text", "No response generated.")
+            return "Unexpected response format from API."
+        else:
+            return f"❌ API Error {response.status_code}: {response.text}"
+
+    except requests.exceptions.Timeout:
+        return "❌ Request timed out. The model may be loading. Please try again in a moment."
+    except Exception as e:
+        return f"❌ Error: {str(e)}"
 
 # ─── Sidebar Configuration ────────────────────────────────────────────────────
 with st.sidebar:
@@ -72,11 +122,12 @@ defect_data = st.session_state.get("defect_data")
 root_folder_for_structures = st.session_state.get("root_folder_id", root_id)
 
 # ─── Main Tabs ────────────────────────────────────────────────────────────────
-tab_about, tab_data, tab_plot, tab_structures = st.tabs([
+tab_about, tab_data, tab_plot, tab_structures, tab_ai = st.tabs([
     "💡 About DefectDB Studio",
     "📂 Defect Dataset Viewer",
     "📈 Formation Energy Plotter",
-    "🧱 Optimized Structures"
+    "🧱 Optimized Structures",
+    "🤖 AI Q&A"
 ])
 
 # ─── ABOUT TAB ────────────────────────────────────────────────────────────────
@@ -152,5 +203,105 @@ with tab_structures:
         render_structures_page(root_folder_for_structures)
     else:
         st.info("Enter a Google Drive root folder ID to browse optimized structures.")
+
+# ─── AI Q&A TAB ───────────────────────────────────────────────────────────────
+with tab_ai:
+    st.header("🤖 AI-Powered Defect Q&A")
+    st.caption("Ask questions about defects and get AI-generated explanations based on the loaded dataset.")
+
+    if defect_data is None:
+        st.warning("⚠️ Please load defect data from the sidebar first (Scan Google Drive).")
+    else:
+        # Check if required columns exist
+        if "AB" in defect_data.columns and "Defect" in defect_data.columns:
+            col1, col2 = st.columns(2)
+
+            with col1:
+                # Get unique compounds
+                compounds = sorted(defect_data["AB"].unique())
+                selected_compound = st.selectbox("Select Compound", compounds)
+
+            with col2:
+                # Get defects for selected compound
+                if selected_compound:
+                    defects_for_compound = sorted(
+                        defect_data[defect_data["AB"] == selected_compound]["Defect"].unique()
+                    )
+                    selected_defect = st.selectbox("Select Defect", defects_for_compound)
+
+            # Custom query input
+            st.divider()
+            custom_query = st.text_area(
+                "Or ask a custom question about defects:",
+                placeholder="e.g., 'Explain the stability of As_Te in CdTe' or 'What affects defect formation energy?'",
+                height=80
+            )
+
+            if st.button("🚀 Analyze with AI", type="primary"):
+                with st.spinner("Querying AI model... This may take a moment if the model is loading."):
+                    # Prepare context from data
+                    if selected_compound and selected_defect:
+                        # Filter data for selected compound and defect
+                        mask = (defect_data["AB"] == selected_compound) & (defect_data["Defect"] == selected_defect)
+                        defect_rows = defect_data[mask]
+
+                        if not defect_rows.empty:
+                            # Extract relevant information
+                            row = defect_rows.iloc[0]
+                            context_info = []
+                            context_info.append(f"Compound: {selected_compound}")
+                            context_info.append(f"Defect: {selected_defect}")
+
+                            # Add available data fields
+                            if "gap" in row and not pd.isna(row["gap"]):
+                                context_info.append(f"Band gap: {row['gap']:.2f} eV")
+                            if "VBM" in row and not pd.isna(row["VBM"]):
+                                context_info.append(f"VBM: {row['VBM']:.2f} eV")
+
+                            base_info = "\n".join(context_info)
+
+                            # Determine the question
+                            if custom_query.strip():
+                                question = custom_query
+                            else:
+                                question = f"Explain the defect {selected_defect} in {selected_compound} and discuss its stability and potential impact on material properties."
+
+                            # Build prompt
+                            prompt = f"""Given the following defect data:
+{base_info}
+
+Question: {question}
+
+Please provide a clear, scientific explanation in simple terms suitable for materials science researchers."""
+
+                        else:
+                            prompt = custom_query if custom_query.strip() else "Explain defect formation in semiconductors."
+                    else:
+                        prompt = custom_query if custom_query.strip() else "Explain defect formation in semiconductors."
+
+                    # Query the AI model
+                    result = hf_query(prompt)
+
+                    # Display results
+                    st.subheader("📝 AI Response")
+                    with st.container(border=True):
+                        st.markdown(result)
+
+                    # Show the prompt used (for transparency)
+                    with st.expander("🔍 View Full Prompt Sent to AI"):
+                        st.code(prompt, language="text")
+
+        else:
+            st.error("❌ Dataset is missing required columns ('AB' or 'Defect'). Please check your data source.")
+
+        # Add helpful information
+        st.divider()
+        st.info("""
+        **💡 Tips for Better Results:**
+        - Be specific in your questions
+        - The AI uses the Mistral-7B model via Hugging Face
+        - First request may be slower if the model needs to load
+        - Responses are AI-generated and should be verified with domain expertise
+        """, icon="💡")
 
 console.log("🧪 DefectDB Studio loaded successfully.")
