@@ -8,12 +8,14 @@ from defect_utils import (
     ROOT_FOLDER_ID_DEFAULT,
 )
 
-# ASE and pymatgen imports
+# ASE + Pymatgen imports
 try:
     from pymatgen.core import Structure
+    from pymatgen.io.cif import CifWriter
     from ase.io import read
     from ase.visualize.plot import plot_atoms
     import matplotlib.pyplot as plt
+    import pandas as pd
     PYMATGEN_AVAILABLE = True
 except ImportError:
     PYMATGEN_AVAILABLE = False
@@ -75,21 +77,29 @@ def _parse_charge_label(label: str) -> str:
 
 
 def _visualize_structure(structure_blob: bytes, filename: str, compound: str, defect: str, charge: str):
-    """Visualize structure using ASE + matplotlib."""
-    import pandas as pd
-
+    """Visualize structure using ASE, converting POSCAR → CIF via Pymatgen."""
     if not PYMATGEN_AVAILABLE:
         st.warning("⚠️ ASE or pymatgen not installed. Visualization unavailable.")
         return
 
     try:
-        # Decode and parse file
+        # Decode file contents
         structure_text = structure_blob.decode("utf-8")
-        temp = io.StringIO(structure_text)
 
-        fmt = "cif" if filename.lower().endswith(".cif") else "vasp"
-        atoms = read(temp, format=fmt)
+        # Load with Pymatgen (CIF or POSCAR)
+        fmt = "cif" if filename.lower().endswith(".cif") else "poscar"
         structure = Structure.from_str(structure_text, fmt=fmt)
+
+        # Convert to CIF in-memory for ASE visualization
+        from io import StringIO
+        cif_buffer = StringIO()
+        cif_writer = CifWriter(structure)
+        cif_writer.write_file(cif_buffer)
+        cif_data = cif_writer.__str__()
+        cif_temp = StringIO(cif_data)
+
+        # Load CIF via ASE
+        atoms = read(cif_temp, format="cif")
 
         st.success(f"✅ Structure loaded: {structure.composition.reduced_formula}")
 
@@ -123,15 +133,15 @@ def _visualize_structure(structure_blob: bytes, filename: str, compound: str, de
 
         # === Atomic positions ===
         with st.expander("⚛️ Atomic Positions", expanded=False):
-            df = pd.DataFrame(
-                [{
+            positions = []
+            for site in structure:
+                positions.append({
                     "Element": site.species_string,
                     "x": f"{site.frac_coords[0]:.6f}",
                     "y": f"{site.frac_coords[1]:.6f}",
-                    "z": f"{site.frac_coords[2]:.6f}"
-                } for site in structure]
-            )
-            st.dataframe(df, use_container_width=True)
+                    "z": f"{site.frac_coords[2]:.6f}",
+                })
+            st.dataframe(pd.DataFrame(positions), use_container_width=True)
 
     except Exception as e:
         st.error(f"❌ Error visualizing structure: {e}")
@@ -140,14 +150,14 @@ def _visualize_structure(structure_blob: bytes, filename: str, compound: str, de
 
 
 def render_structures_page(root_folder_id: str = ROOT_FOLDER_ID_DEFAULT):
-    """Main function for the Streamlit structures page."""
+    """Main Streamlit page for browsing and visualizing defect structures."""
     st.header("🧱 Optimized Structures")
 
     st.markdown("""
     **Interactive Structure Browser**
 
-    Select a compound → defect → charge state to visualize and download optimized crystal structures.
-    This visualization uses ASE (Atomic Simulation Environment) for rendering.
+    Select a compound → defect → charge state to visualize and download optimized crystal structures.  
+    Visualization is powered by **ASE (Atomic Simulation Environment)**.
     """)
 
     # === Step 1️⃣: Select Compound ===
@@ -161,6 +171,7 @@ def render_structures_page(root_folder_id: str = ROOT_FOLDER_ID_DEFAULT):
     comp_labels = [label for label, _ in compound_choices]
     comp_ids = {label: value for label, value in compound_choices}
 
+    # Show plain names (no LaTeX)
     comp_display_names = [_clean_compound_name(label) for label in comp_labels]
     comp_display_map = {display: original for display, original in zip(comp_display_names, comp_labels)}
 
@@ -210,8 +221,10 @@ def render_structures_page(root_folder_id: str = ROOT_FOLDER_ID_DEFAULT):
         return
 
     charge_display_map = {_parse_charge_label(k): k for k in charges.keys()}
-    charge_display_labels = sorted(charge_display_map.keys(),
-                                   key=lambda x: int(x) if x.lstrip("+-").isdigit() else 0)
+    charge_display_labels = sorted(
+        charge_display_map.keys(),
+        key=lambda x: int(x) if x.lstrip("+-").isdigit() else 0
+    )
 
     charge_sel_display = st.selectbox(
         "Choose a charge state:",
@@ -226,7 +239,7 @@ def render_structures_page(root_folder_id: str = ROOT_FOLDER_ID_DEFAULT):
     charge_orig_label = charge_display_map[charge_sel_display]
     charge_folder_id = charges[charge_orig_label]
 
-    # === Step 4️⃣: Load and visualize ===
+    # === Step 4️⃣: Load and visualize structure ===
     st.divider()
     st.subheader(f"📊 Structure: {comp_sel_display} | {defect_sel} | Charge {charge_sel_display}")
 
