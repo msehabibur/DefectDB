@@ -5,7 +5,7 @@ google-auth-httplib2
 pandas
 numpy
 pymatgen
-crystal-toolkit
+ase
 certifi
 rich==14.2.0
 tqdm==4.67.1
