@@ -19,7 +19,6 @@ import certifi
 import httplib2
 import pandas as pd
 import streamlit as st
-from openai import OpenAI
 from rich.console import Console
 from rich.traceback import install as install_rich_traceback
 
@@ -30,6 +29,7 @@ from defect_utils import (
 )
 from page_plotter import render_plotter_page
 from page_structures import render_structures_page
+from ai_tool import gpt_query  # <-- ✅ imported AI logic here
 
 # ─── SSL & Config ─────────────────────────────────────────────────────────────
 install_rich_traceback(show_locals=False)
@@ -39,43 +39,6 @@ st.set_page_config(page_title="DefectDB Studio", layout="wide", page_icon="🧪"
 httplib2.CA_CERTS = certifi.where()
 ssl.create_default_context(cafile=certifi.where())
 console.log("✅ Streamlit configuration initialised.")
-
-# ─── OpenAI Setup ─────────────────────────────────────────────────────────────
-try:
-    OPENAI_API_KEY = st.secrets["OPENAI_API_KEY"]
-    client = OpenAI(api_key=OPENAI_API_KEY)
-except KeyError:
-    client = None
-    st.warning("⚠️ Please add your OpenAI API key to `.streamlit/secrets.toml` as `OPENAI_API_KEY`.")
-
-# ─── GPT Query Function ───────────────────────────────────────────────────────
-def gpt_query(prompt: str, model: str = "gpt-4o-mini") -> str:
-    """
-    Query OpenAI GPT model with a given prompt.
-
-    Args:
-        prompt (str): The input prompt for GPT.
-        model (str): The GPT model name.
-
-    Returns:
-        str: The model's response text.
-    """
-    if client is None:
-        return "❌ Error: OpenAI API key not found. Please configure it in .streamlit/secrets.toml."
-
-    try:
-        response = client.chat.completions.create(
-            model=model,
-            messages=[
-                {"role": "system", "content": "You are a materials science expert specializing in semiconductor defects."},
-                {"role": "user", "content": prompt}
-            ],
-            temperature=0.6,
-            max_tokens=500
-        )
-        return response.choices[0].message.content.strip()
-    except Exception as e:
-        return f"❌ Error from OpenAI API: {str(e)}"
 
 # ─── Sidebar Configuration ────────────────────────────────────────────────────
 with st.sidebar:
@@ -164,7 +127,7 @@ with tab_structures:
 # ─── AI Q&A TAB ───────────────────────────────────────────────────────────────
 with tab_ai:
     st.header("🤖 AI-Powered Defect Q&A")
-    st.caption("Ask GPT about your defect data for intelligent explanations.")
+    st.caption("Ask AI about your defect data for intelligent explanations.")
 
     if defect_data is None:
         st.warning("⚠️ Please load defect data from the sidebar first (Scan Google Drive).")
@@ -190,8 +153,8 @@ with tab_ai:
                 height=80
             )
 
-            if st.button("🚀 Ask GPT", type="primary"):
-                with st.spinner("Contacting GPT model..."):
+            if st.button("🚀 Ask AI", type="primary"):  # ✅ renamed
+                with st.spinner("Contacting AI model..."):
                     if selected_compound and selected_defect:
                         mask = (defect_data["AB"] == selected_compound) & (defect_data["Defect"] == selected_defect)
                         defect_rows = defect_data[mask]
@@ -225,9 +188,9 @@ Explain in a scientific yet clear manner for materials researchers."""
                     else:
                         prompt = custom_query or "Explain defect formation in semiconductors."
 
-                    result = gpt_query(prompt)
+                    result = gpt_query(prompt)  # ✅ uses ai_tool.py now
 
-                    st.subheader("📝 GPT Response")
+                    st.subheader("📝 AI Response")
                     with st.container(border=True):
                         st.markdown(result)
 
@@ -235,14 +198,4 @@ Explain in a scientific yet clear manner for materials researchers."""
                         st.code(prompt, language="text")
 
         else:
-            st.error("❌ Dataset missing required columns ('AB' or 'Defect'). Please check your data source.")
-
-        st.divider()
-        st.info("""
-        **💡 Tips:**
-        - Be specific in your question
-        - Uses GPT-4o-mini for fast, accurate responses
-        - Ideal for interpreting defect energetics, charge states, and trends
-        """, icon="💡")
-
-console.log("🧪 DefectDB Studio loaded successfully.")
+            st.error("❌ Dataset missing required columns ('AB' or 'Defect'). Pl
