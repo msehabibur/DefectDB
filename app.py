@@ -42,7 +42,7 @@ ssl.create_default_context(cafile=certifi.where())
 console.log("✅ Streamlit configuration initialised.")
 
 # ─── AI Integration Functions ─────────────────────────────────────────────────
-def hf_query(prompt: str, model: str = "mistralai/Mistral-7B-Instruct-v0.2") -> str:
+def hf_query(prompt: str, model: str = "mistralai/Mistral-7B-Instruct-v0.3") -> str:
     """
     Query Hugging Face Inference API with a prompt.
 
