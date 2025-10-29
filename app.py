@@ -13,14 +13,13 @@ os.environ["STREAMLIT_SERVER_HEADLESS"] = "true"
 os.environ["STREAMLIT_SERVER_ENABLE_STATIC_SERVING"] = "false"
 os.environ["STREAMLIT_BROWSER_GATHER_USAGE_STATS"] = "false"
 
-
 # ─── Core Imports ─────────────────────────────────────────────────────────────
 import ssl
 import certifi
 import httplib2
 import pandas as pd
 import streamlit as st
-import requests
+from openai import OpenAI
 from rich.console import Console
 from rich.traceback import install as install_rich_traceback
 
@@ -41,53 +40,42 @@ httplib2.CA_CERTS = certifi.where()
 ssl.create_default_context(cafile=certifi.where())
 console.log("✅ Streamlit configuration initialised.")
 
-# ─── AI Integration Functions ─────────────────────────────────────────────────
-def hf_query(prompt: str, model: str = "mistralai/Mistral-7B-Instruct-v0.3") -> str:
+# ─── OpenAI Setup ─────────────────────────────────────────────────────────────
+try:
+    OPENAI_API_KEY = st.secrets["OPENAI_API_KEY"]
+    client = OpenAI(api_key=OPENAI_API_KEY)
+except KeyError:
+    client = None
+    st.warning("⚠️ Please add your OpenAI API key to `.streamlit/secrets.toml` as `OPENAI_API_KEY`.")
+
+# ─── GPT Query Function ───────────────────────────────────────────────────────
+def gpt_query(prompt: str, model: str = "gpt-4o-mini") -> str:
     """
-    Query Hugging Face Inference API with a prompt.
+    Query OpenAI GPT model with a given prompt.
 
     Args:
-        prompt: The input prompt for the model
-        model: The Hugging Face model to use
+        prompt (str): The input prompt for GPT.
+        model (str): The GPT model name.
 
     Returns:
-        The generated text response
+        str: The model's response text.
     """
+    if client is None:
+        return "❌ Error: OpenAI API key not found. Please configure it in .streamlit/secrets.toml."
+
     try:
-        HF_API_TOKEN = st.secrets.get("HF_API_TOKEN")
-        if not HF_API_TOKEN:
-            return "❌ Error: HF_API_TOKEN not found in secrets. Please configure it in .streamlit/secrets.toml"
-
-        headers = {"Authorization": f"Bearer {HF_API_TOKEN}"}
-        payload = {
-            "inputs": prompt,
-            "parameters": {
-                "max_new_tokens": 250,
-                "temperature": 0.7,
-                "top_p": 0.9,
-                "return_full_text": False
-            }
-        }
-
-        response = requests.post(
-            f"https://api-inference.huggingface.co/models/{model}",
-            headers=headers,
-            json=payload,
-            timeout=30
+        response = client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": "You are a materials science expert specializing in semiconductor defects."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.6,
+            max_tokens=500
         )
-
-        if response.status_code == 200:
-            result = response.json()
-            if isinstance(result, list) and len(result) > 0:
-                return result[0].get("generated_text", "No response generated.")
-            return "Unexpected response format from API."
-        else:
-            return f"❌ API Error {response.status_code}: {response.text}"
-
-    except requests.exceptions.Timeout:
-        return "❌ Request timed out. The model may be loading. Please try again in a moment."
+        return response.choices[0].message.content.strip()
     except Exception as e:
-        return f"❌ Error: {str(e)}"
+        return f"❌ Error from OpenAI API: {str(e)}"
 
 # ─── Sidebar Configuration ────────────────────────────────────────────────────
 with st.sidebar:
@@ -137,8 +125,8 @@ with tab_about:
 
     with st.container(border=True):
         st.markdown("""
-        **Md Habibur Rahman**, **Yi Yang**, and **Arun Mannodi-Kanakkithodi**
-        *School of Materials Engineering, Purdue University*
+        **Md Habibur Rahman**, **Yi Yang**, and **Arun Mannodi-Kanakkithodi**  
+        *School of Materials Engineering, Purdue University*  
         *West Lafayette, IN 47907, USA*
         """)
 
@@ -148,37 +136,6 @@ with tab_about:
         "to explore formation energies, charge-transition levels, and structural relaxations.",
         icon="🔬"
     )
-
-    st.markdown("---")
-    st.header("🧭 Workflow Overview")
-
-    with st.expander("📁 **1️⃣ Data Integration**", expanded=True):
-        st.markdown("""
-        - Connects to a specified **Google Drive folder** and searches for  
-          `cdsete_defect_library_generation_pbesol.csv`.  
-        - Once loaded, the data is cached for fast, interactive exploration.
-        """)
-
-    with st.expander("📊 **2️⃣ Formation Energy Visualization**", expanded=True):
-        st.markdown("""
-        - Each entry includes charge states, total energies, and reference chemical potentials.  
-        - Visualize **formation energy vs Fermi level** diagrams with transition-level markers.  
-        - Supports comparison across **multiple compositions** (e.g., CdSeₓTe₁₋ₓ).
-        """)
-
-    with st.expander("🧱 **3️⃣ Structure Browser**", expanded=True):
-        st.markdown("""
-        - Access **relaxed POSCAR/CIF files** of bulk and defect structures directly from Drive.
-        """)
-
-    st.markdown("---")
-    st.header("💡 Purpose and Vision")
-    st.markdown("""
-    **DefectDB Studio** aims to
-    - Democratize access to curated defect datasets for **semiconductors** and **chalcogenides**,
-    - Accelerate discovery of **defect-tolerant materials** for renewable energy, and
-    - Promote **FAIR data principles** (Findable, Accessible, Interoperable, Reusable).
-    """)
 
 # ─── DATA TAB ─────────────────────────────────────────────────────────────────
 with tab_data:
@@ -207,29 +164,25 @@ with tab_structures:
 # ─── AI Q&A TAB ───────────────────────────────────────────────────────────────
 with tab_ai:
     st.header("🤖 AI-Powered Defect Q&A")
-    st.caption("Ask questions about defects and get AI-generated explanations based on the loaded dataset.")
+    st.caption("Ask GPT about your defect data for intelligent explanations.")
 
     if defect_data is None:
         st.warning("⚠️ Please load defect data from the sidebar first (Scan Google Drive).")
     else:
-        # Check if required columns exist
         if "AB" in defect_data.columns and "Defect" in defect_data.columns:
             col1, col2 = st.columns(2)
 
             with col1:
-                # Get unique compounds
                 compounds = sorted(defect_data["AB"].unique())
                 selected_compound = st.selectbox("Select Compound", compounds)
 
             with col2:
-                # Get defects for selected compound
                 if selected_compound:
                     defects_for_compound = sorted(
                         defect_data[defect_data["AB"] == selected_compound]["Defect"].unique()
                     )
                     selected_defect = st.selectbox("Select Defect", defects_for_compound)
 
-            # Custom query input
             st.divider()
             custom_query = st.text_area(
                 "Or ask a custom question about defects:",
@@ -237,71 +190,59 @@ with tab_ai:
                 height=80
             )
 
-            if st.button("🚀 Analyze with AI", type="primary"):
-                with st.spinner("Querying AI model... This may take a moment if the model is loading."):
-                    # Prepare context from data
+            if st.button("🚀 Ask GPT", type="primary"):
+                with st.spinner("Contacting GPT model..."):
                     if selected_compound and selected_defect:
-                        # Filter data for selected compound and defect
                         mask = (defect_data["AB"] == selected_compound) & (defect_data["Defect"] == selected_defect)
                         defect_rows = defect_data[mask]
 
                         if not defect_rows.empty:
-                            # Extract relevant information
                             row = defect_rows.iloc[0]
-                            context_info = []
-                            context_info.append(f"Compound: {selected_compound}")
-                            context_info.append(f"Defect: {selected_defect}")
-
-                            # Add available data fields
+                            context_info = [
+                                f"Compound: {selected_compound}",
+                                f"Defect: {selected_defect}"
+                            ]
                             if "gap" in row and not pd.isna(row["gap"]):
                                 context_info.append(f"Band gap: {row['gap']:.2f} eV")
                             if "VBM" in row and not pd.isna(row["VBM"]):
                                 context_info.append(f"VBM: {row['VBM']:.2f} eV")
 
                             base_info = "\n".join(context_info)
+                            question = custom_query.strip() or (
+                                f"Explain the defect {selected_defect} in {selected_compound} "
+                                f"and discuss its stability and impact on performance."
+                            )
 
-                            # Determine the question
-                            if custom_query.strip():
-                                question = custom_query
-                            else:
-                                question = f"Explain the defect {selected_defect} in {selected_compound} and discuss its stability and potential impact on material properties."
-
-                            # Build prompt
-                            prompt = f"""Given the following defect data:
+                            prompt = f"""You are an expert in semiconductor defect physics.
+Given the following data:
 {base_info}
 
 Question: {question}
 
-Please provide a clear, scientific explanation in simple terms suitable for materials science researchers."""
-
+Explain in a scientific yet clear manner for materials researchers."""
                         else:
-                            prompt = custom_query if custom_query.strip() else "Explain defect formation in semiconductors."
+                            prompt = custom_query or "Explain defect formation in semiconductors."
                     else:
-                        prompt = custom_query if custom_query.strip() else "Explain defect formation in semiconductors."
+                        prompt = custom_query or "Explain defect formation in semiconductors."
 
-                    # Query the AI model
-                    result = hf_query(prompt)
+                    result = gpt_query(prompt)
 
-                    # Display results
-                    st.subheader("📝 AI Response")
+                    st.subheader("📝 GPT Response")
                     with st.container(border=True):
                         st.markdown(result)
 
-                    # Show the prompt used (for transparency)
-                    with st.expander("🔍 View Full Prompt Sent to AI"):
+                    with st.expander("🔍 View Prompt"):
                         st.code(prompt, language="text")
 
         else:
-            st.error("❌ Dataset is missing required columns ('AB' or 'Defect'). Please check your data source.")
+            st.error("❌ Dataset missing required columns ('AB' or 'Defect'). Please check your data source.")
 
-        # Add helpful information
         st.divider()
         st.info("""
-        **💡 Tips for Better Results:**
-        - Be specific in your questions
-        - The AI uses the Mistral-7B model via Hugging Face
-        - First request may be slower if the model needs to load
-        - Responses are AI-generated and should be verified with domain expertise
+        **💡 Tips:**
+        - Be specific in your question
+        - Uses GPT-4o-mini for fast, accurate responses
+        - Ideal for interpreting defect energetics, charge states, and trends
         """, icon="💡")
 
 console.log("🧪 DefectDB Studio loaded successfully.")
