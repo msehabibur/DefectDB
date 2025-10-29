@@ -245,8 +245,7 @@ Explain in a scientific yet clear manner for materials researchers."""
 with tab_next:
     st.header("🚀 Next Steps: Extending DefectDB Studio")
     st.markdown("""
-    The next phase of **DefectDB Studio** focuses on integrating advanced levels of theory and experimental validation.  
-    Below are the planned steps to further enhance predictive accuracy and physical realism:
+    The next phase of **DefectDB Studio** focuses on integrating advanced levels of theory and experimental validation. Below are the planned steps to further enhance predictive accuracy and physical realism:
     """)
     st.markdown("""
     1. **Add HSE + SOC Data** Incorporate hybrid functional (HSE06) calculations including spin–orbit coupling to achieve band-edge and defect-level accuracy comparable to experimental results.  
