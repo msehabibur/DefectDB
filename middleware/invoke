@@ -1,1 +1,11 @@
+#!/bin/sh
+# nanoHUB launcher ? opens CADeT.ipynb in regular notebook mode
+# If you ever want ?app-mode? (auto-run on launch) add the -A flag to start_jupyter.
+
+/usr/bin/invoke_app "$@" \
+  -C "start_jupyter -A @tool app.ipynb" \
+  -t cadetff \
+  -u anaconda-7 \
+  -r none \
+  -w headless
 
