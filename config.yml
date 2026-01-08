@@ -1,0 +1,9 @@
+tool:
+  name: cadetff
+  title: CADeT‑FF: Accelerated Modeling of Defect Thermodynamics
+  tool_type: jupyter
+  main: CADeT.ipynb
+  description: |
+    A Jupyter notebook-based tool for modeling defect thermodynamics in CdSeTe solar cells.
+  author: Habibur Rahman
+  license: MIT
