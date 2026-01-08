@@ -4,7 +4,7 @@
 
 /usr/bin/invoke_app "$@" \
   -C "start_jupyter -A @tool app.ipynb" \
-  -t cadetff \
+  -t defectdb \
   -u anaconda-7 \
   -r none \
   -w headless
