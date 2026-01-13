@@ -1,7 +1,9 @@
+#!/bin/sh
+
 /usr/bin/invoke_app "$@" \
- -C "start_jupyter -A -T @tool app_v4.ipynb" \
- -t defectdatabase \
- -u anaconda-7 \
- -r none \
- -w headless
+  -C "start_jupyter -A -T @tool app_v4.ipynb" \
+  -t defectdatabase \
+  -u anaconda-7 \
+  -r none \
+  -w headless
 
