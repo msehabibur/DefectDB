@@ -1250,7 +1250,7 @@ def create_download_buttons(uds_state, output_widget):
                 
                 # Save all defect CIFs
                 for defect_name, struct in uds_state['defect_structures'].items():
-                    safe_name = defect_name.replace('_', '-').replace('+', '-')
+                    safe_name = defect_name.replace('+', '_')
                     cif_filename = f"defect_{safe_name}.cif"
                     cif_path = Path(temp_dir) / cif_filename
                     CifWriter(struct).write_file(str(cif_path))
@@ -1306,6 +1306,12 @@ def create_download_buttons(uds_state, output_widget):
                 
                 # Create temporary directory
                 temp_dir = tempfile.mkdtemp()
+                phase2_dir = Path(temp_dir) / "phase2_bulk"
+                phase3_defects_dir = Path(temp_dir) / "phase3_defects"
+                phase3_results_dir = Path(temp_dir) / "phase3_results"
+                phase2_dir.mkdir(parents=True, exist_ok=True)
+                phase3_defects_dir.mkdir(parents=True, exist_ok=True)
+                phase3_results_dir.mkdir(parents=True, exist_ok=True)
                 
                 # Save CSV
                 df = pd.DataFrame({
@@ -1330,22 +1336,19 @@ def create_download_buttons(uds_state, output_widget):
                     df = df.sort_values('ΔH_f (eV)')
                 
                 csv_filename = f"formation_energies_{timestamp}.csv"
-                csv_path = Path(temp_dir) / csv_filename
+                csv_path = phase3_results_dir / csv_filename
                 df.to_csv(csv_path, index=False)
                 
                 # Save bulk structure if available
                 if uds_state.get('bulk_structure'):
-                    bulk_cif = Path(temp_dir) / "bulk_structure.cif"
+                    bulk_cif = phase2_dir / "bulk_structure.cif"
                     CifWriter(uds_state['bulk_structure']).write_file(str(bulk_cif))
                 
                 # Save all defect structures
                 if uds_state.get('defect_structures'):
-                    defect_dir = Path(temp_dir) / "defect_structures"
-                    defect_dir.mkdir()
-                    
                     for defect_name, struct in uds_state['defect_structures'].items():
-                        safe_name = defect_name.replace('_', '-').replace('+', '-')
-                        cif_path = defect_dir / f"{safe_name}.cif"
+                        safe_name = defect_name.replace('+', '_')
+                        cif_path = phase3_defects_dir / f"{safe_name}.cif"
                         CifWriter(struct).write_file(str(cif_path))
                 
                 # Create ZIP with everything
@@ -1354,16 +1357,16 @@ def create_download_buttons(uds_state, output_widget):
                 
                 with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
                     # Add CSV
-                    zipf.write(csv_path, csv_filename)
+                    zipf.write(csv_path, f"phase3_results/{csv_filename}")
                     
                     # Add bulk
-                    if (Path(temp_dir) / "bulk_structure.cif").exists():
-                        zipf.write(Path(temp_dir) / "bulk_structure.cif", "bulk_structure.cif")
+                    if (phase2_dir / "bulk_structure.cif").exists():
+                        zipf.write(phase2_dir / "bulk_structure.cif", "phase2_bulk/bulk_structure.cif")
                     
                     # Add defects
-                    if (Path(temp_dir) / "defect_structures").exists():
-                        for file in (Path(temp_dir) / "defect_structures").glob("*.cif"):
-                            zipf.write(file, f"defect_structures/{file.name}")
+                    if phase3_defects_dir.exists():
+                        for file in phase3_defects_dir.glob("*.cif"):
+                            zipf.write(file, f"phase3_defects/{file.name}")
                 
                 # Read ZIP file
                 with open(zip_path, 'rb') as f:
@@ -1820,45 +1823,6 @@ uds_status = widgets.HTML(
     "<b>Status:</b> Ready - Load structure to begin</div>"
 )
 
-# M3GNet Download Helper
-uds_m3gnet_help_button = widgets.Button(
-    description='📥 M3GNet Download Help',
-    button_style='warning',
-    layout=widgets.Layout(width='200px'),
-    tooltip='Show instructions for manually downloading M3GNet model'
-)
-
-def show_m3gnet_download_instructions(b):
-    """Show M3GNet manual download instructions"""
-    uds_log_output.clear_output(wait=False)
-    with uds_log_output:
-        MODEL_NAME = M3GNetModelManager.MODEL_NAME
-        FILES = M3GNetModelManager.REQUIRED_FILES
-        BASE_URL = M3GNetModelManager.GITHUB_BASE_URL
-        
-        log_section("M3GNET MODEL DOWNLOAD INSTRUCTIONS")
-        log_plain("")
-        log_info("Download the M3GNet MatPES-PBE-v2025.1 model:")
-        log_plain("")
-        log_warning("Option 1: Using wget (recommended)")
-        log_plain(f"  mkdir -p ~/.cache/matgl/{MODEL_NAME}")
-        log_plain(f"  cd ~/.cache/matgl/{MODEL_NAME}")
-        for filename in FILES:
-            log_plain(f"  wget {BASE_URL}/{MODEL_NAME}/{filename}")
-        log_plain("")
-        log_warning("Option 2: Using curl")
-        log_plain(f"  mkdir -p ~/.cache/matgl/{MODEL_NAME}")
-        log_plain(f"  cd ~/.cache/matgl/{MODEL_NAME}")
-        for filename in FILES:
-            log_plain(f"  curl -L -o {filename} {BASE_URL}/{MODEL_NAME}/{filename}")
-        log_plain("")
-        log_success("After downloading, just click the button again (no restart needed)!")
-        log_plain("")
-        log_info("Required files:")
-        for filename in FILES:
-            log_plain(f"  - {filename}")
-
-uds_m3gnet_help_button.on_click(show_m3gnet_download_instructions)
 
 # Output areas
 uds_log_output = widgets.Output(
@@ -2715,7 +2679,6 @@ uds_left_panel = widgets.VBox([
     widgets.HTML("<hr style='margin: 20px 0; border-color: " + UDS_COLORS['panel_border'] + ";'>"),
     uds_progress,
     uds_status,
-    uds_m3gnet_help_button,
     widgets.HTML("<hr style='margin: 20px 0; border-color: " + UDS_COLORS['panel_border'] + ";'>"),
     widgets.HTML(f"<h3 style='color:{UDS_COLORS['text_primary']};'>📥 Downloads</h3>"),
     uds_download_container
