@@ -95,6 +95,9 @@ UDS_COLORS = {
     'scatter_3': '#f4c7ab',      # Light coral
 }
 
+UDS_SHOW_FORMATION_SUMMARY = False
+UDS_ENABLE_SEPARATE_DOWNLOADS = False
+
 # Periodic Table
 PERIODIC_TABLE = [
     ['H', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', 'He'],
@@ -111,7 +114,7 @@ PERIODIC_TABLE = [
 
 def log_info(text, output_widget=None):
     """Log info message with blue color"""
-    msg = f"<span style='color: #3b82f6;'>ℹ️ {text}</span>"
+    msg = f"<span style='color: #3b82f6;'>{text}</span>"
     if output_widget:
         with output_widget:
             display(HTML(msg))
@@ -120,7 +123,7 @@ def log_info(text, output_widget=None):
 
 def log_success(text, output_widget=None):
     """Log success message with green color"""
-    msg = f"<span style='color: #10b981;'>✅ {text}</span>"
+    msg = f"<span style='color: #10b981;'>{text}</span>"
     if output_widget:
         with output_widget:
             display(HTML(msg))
@@ -129,7 +132,7 @@ def log_success(text, output_widget=None):
 
 def log_warning(text, output_widget=None):
     """Log warning message with orange color"""
-    msg = f"<span style='color: #f59e0b;'>⚠️ {text}</span>"
+    msg = f"<span style='color: #f59e0b;'>{text}</span>"
     if output_widget:
         with output_widget:
             display(HTML(msg))
@@ -138,7 +141,7 @@ def log_warning(text, output_widget=None):
 
 def log_error(text, output_widget=None):
     """Log error message with red color"""
-    msg = f"<span style='color: #ef4444;'>❌ {text}</span>"
+    msg = f"<span style='color: #ef4444;'>{text}</span>"
     if output_widget:
         with output_widget:
             display(HTML(msg))
@@ -1101,12 +1104,16 @@ def calculate_defect_formation_energy(
     E_bulk,
     chemical_potentials,
     defect_notation,
-    log_widget=None
+    log_widget=None,
+    log_output=True
 ):
     """Calculate defect formation energy for neutral charge state"""
+    def _log(call, text):
+        if log_output:
+            call(text, log_widget)
     
-    log_section("DEFECT FORMATION ENERGY CALCULATION", log_widget)
-    log_plain("", log_widget)
+    _log(log_section, "DEFECT FORMATION ENERGY CALCULATION")
+    _log(log_plain, "")
     
     # Parse defect to determine stoichiometry change
     delta_n = {}
@@ -1127,11 +1134,11 @@ def calculate_defect_formation_energy(
             delta_n[host] = delta_n.get(host, 0) + 1
             delta_n[dopant] = delta_n.get(dopant, 0) - 1
     
-    log_plain(f"Defect: {defect_notation}", log_widget)
-    log_info("Stoichiometry change (n_i):", log_widget)
+    _log(log_plain, f"Defect: {defect_notation}")
+    _log(log_info, "Stoichiometry change (n_i):")
     for element, n in delta_n.items():
         sign = "+" if n > 0 else ""
-        log_plain(f"  {element}: {sign}{n}", log_widget)
+        _log(log_plain, f"  {element}: {sign}{n}")
     
     # Calculate chemical potential contribution
     mu_sum = 0.0
@@ -1141,23 +1148,23 @@ def calculate_defect_formation_energy(
         if element in chemical_potentials:
             mu = chemical_potentials[element]
             mu_sum += n * mu
-            log_plain(f"  {element}: n={n:+d}, μ={mu:.4f} eV → {n*mu:+.4f} eV", log_widget)
+            _log(log_plain, f"  {element}: n={n:+d}, μ={mu:.4f} eV → {n*mu:+.4f} eV")
         else:
             missing_elements.append(element)
-            log_warning(f"No chemical potential for {element}", log_widget)
+            _log(log_warning, f"No chemical potential for {element}")
     
     if missing_elements:
-        log_warning(f"Missing chemical potentials for: {missing_elements}", log_widget)
-        log_warning("Formation energy may not be accurate!", log_widget)
+        _log(log_warning, f"Missing chemical potentials for: {missing_elements}")
+        _log(log_warning, "Formation energy may not be accurate!")
     
     # Formation energy
     H_f = E_defect - E_bulk + mu_sum
     
-    log_plain(f"E(defect) = {E_defect:.6f} eV", log_widget)
-    log_plain(f"E(bulk)   = {E_bulk:.6f} eV", log_widget)
-    log_plain(f"Σ n_i μ_i = {mu_sum:+.6f} eV", log_widget)
-    log_success(f"ΔH_f(D^0) = {H_f:.6f} eV", log_widget)
-    log_plain("", log_widget)
+    _log(log_plain, f"E(defect) = {E_defect:.6f} eV")
+    _log(log_plain, f"E(bulk)   = {E_bulk:.6f} eV")
+    _log(log_plain, f"Σ n_i μ_i = {mu_sum:+.6f} eV")
+    _log(log_success, f"ΔH_f(D^0) = {H_f:.6f} eV")
+    _log(log_plain, "")
     
     return H_f
 
@@ -1170,7 +1177,7 @@ def create_download_buttons(uds_state, output_widget):
     download_buttons = []
     
     # Bulk structure CIF
-    if uds_state.get('bulk_structure') is not None:
+    if UDS_ENABLE_SEPARATE_DOWNLOADS and uds_state.get('bulk_structure') is not None:
         btn_bulk = widgets.Button(
             description='📥 Bulk CIF',
             button_style='info',
@@ -1227,7 +1234,7 @@ def create_download_buttons(uds_state, output_widget):
         download_buttons.append(btn_bulk)
     
     # Defect structures
-    if uds_state.get('defect_structures'):
+    if UDS_ENABLE_SEPARATE_DOWNLOADS and uds_state.get('defect_structures'):
         btn_defects = widgets.Button(
             description='📥 All Defects',
             button_style='info',
@@ -1243,7 +1250,7 @@ def create_download_buttons(uds_state, output_widget):
                 
                 # Save all defect CIFs
                 for defect_name, struct in uds_state['defect_structures'].items():
-                    safe_name = defect_name.replace('_', '-').replace('+', '-')
+                    safe_name = defect_name.replace('+', '_')
                     cif_filename = f"defect_{safe_name}.cif"
                     cif_path = Path(temp_dir) / cif_filename
                     CifWriter(struct).write_file(str(cif_path))
@@ -1286,11 +1293,11 @@ def create_download_buttons(uds_state, output_widget):
         download_buttons.append(btn_defects)
     
     # Formation energies CSV + structures
-    if uds_state.get('defect_energies'):
+    if uds_state.get('bulk_structure') is not None or uds_state.get('defect_structures') or uds_state.get('defect_energies'):
         btn_results = widgets.Button(
-            description='📥 All Results',
+            description='Download All',
             button_style='success',
-            layout=widgets.Layout(width='150px')
+            layout=widgets.Layout(width='170px')
         )
         
         def download_all_results(b):
@@ -1299,6 +1306,12 @@ def create_download_buttons(uds_state, output_widget):
                 
                 # Create temporary directory
                 temp_dir = tempfile.mkdtemp()
+                phase2_dir = Path(temp_dir) / "phase2_bulk"
+                phase3_defects_dir = Path(temp_dir) / "phase3_defects"
+                phase3_results_dir = Path(temp_dir) / "phase3_results"
+                phase2_dir.mkdir(parents=True, exist_ok=True)
+                phase3_defects_dir.mkdir(parents=True, exist_ok=True)
+                phase3_results_dir.mkdir(parents=True, exist_ok=True)
                 
                 # Save CSV
                 df = pd.DataFrame({
@@ -1306,7 +1319,7 @@ def create_download_buttons(uds_state, output_widget):
                     'E_defect (eV)': list(uds_state['defect_energies'].values())
                 })
                 
-                if uds_state.get('bulk_energy'):
+                if uds_state.get('bulk_energy') and uds_state.get('input_source') != 'cif':
                     formation_energies = {}
                     for defect_str, E_defect in uds_state['defect_energies'].items():
                         H_f = calculate_defect_formation_energy(
@@ -1314,7 +1327,8 @@ def create_download_buttons(uds_state, output_widget):
                             uds_state['bulk_energy'],
                             uds_state.get('chemical_potentials', {}),
                             defect_str,
-                            log_widget=None
+                            log_widget=None,
+                            log_output=False
                         )
                         formation_energies[defect_str] = H_f
                     
@@ -1322,22 +1336,19 @@ def create_download_buttons(uds_state, output_widget):
                     df = df.sort_values('ΔH_f (eV)')
                 
                 csv_filename = f"formation_energies_{timestamp}.csv"
-                csv_path = Path(temp_dir) / csv_filename
+                csv_path = phase3_results_dir / csv_filename
                 df.to_csv(csv_path, index=False)
                 
                 # Save bulk structure if available
                 if uds_state.get('bulk_structure'):
-                    bulk_cif = Path(temp_dir) / "bulk_structure.cif"
+                    bulk_cif = phase2_dir / "bulk_structure.cif"
                     CifWriter(uds_state['bulk_structure']).write_file(str(bulk_cif))
                 
                 # Save all defect structures
                 if uds_state.get('defect_structures'):
-                    defect_dir = Path(temp_dir) / "defect_structures"
-                    defect_dir.mkdir()
-                    
                     for defect_name, struct in uds_state['defect_structures'].items():
-                        safe_name = defect_name.replace('_', '-').replace('+', '-')
-                        cif_path = defect_dir / f"{safe_name}.cif"
+                        safe_name = defect_name.replace('+', '_')
+                        cif_path = phase3_defects_dir / f"{safe_name}.cif"
                         CifWriter(struct).write_file(str(cif_path))
                 
                 # Create ZIP with everything
@@ -1346,16 +1357,16 @@ def create_download_buttons(uds_state, output_widget):
                 
                 with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
                     # Add CSV
-                    zipf.write(csv_path, csv_filename)
+                    zipf.write(csv_path, f"phase3_results/{csv_filename}")
                     
                     # Add bulk
-                    if (Path(temp_dir) / "bulk_structure.cif").exists():
-                        zipf.write(Path(temp_dir) / "bulk_structure.cif", "bulk_structure.cif")
+                    if (phase2_dir / "bulk_structure.cif").exists():
+                        zipf.write(phase2_dir / "bulk_structure.cif", "phase2_bulk/bulk_structure.cif")
                     
                     # Add defects
-                    if (Path(temp_dir) / "defect_structures").exists():
-                        for file in (Path(temp_dir) / "defect_structures").glob("*.cif"):
-                            zipf.write(file, f"defect_structures/{file.name}")
+                    if phase3_defects_dir.exists():
+                        for file in phase3_defects_dir.glob("*.cif"):
+                            zipf.write(file, f"phase3_defects/{file.name}")
                 
                 # Read ZIP file
                 with open(zip_path, 'rb') as f:
@@ -1366,13 +1377,18 @@ def create_download_buttons(uds_state, output_widget):
                 
                 # Create download link
                 b64 = base64.b64encode(zip_data).decode()
+                link_id = f"uds-download-{timestamp}"
                 download_link = f'''
-                <a download="{zip_filename}" 
-                   href="data:application/zip;base64,{b64}" 
-                   style="background-color:#10b981; color:white; padding:10px 20px; 
-                          text-decoration:none; border-radius:5px; display:inline-block; margin:10px 0;">
-                    💾 Click to Download {zip_filename} (Complete Package)
-                </a>
+                <a id="{link_id}" download="{zip_filename}" 
+                   href="data:application/zip;base64,{b64}" style="display:none;"></a>
+                <script>
+                    (function() {{
+                        var link = document.getElementById("{link_id}");
+                        if (link) {{
+                            link.click();
+                        }}
+                    }})();
+                </script>
                 '''
                 
                 with output_widget:
@@ -1807,45 +1823,6 @@ uds_status = widgets.HTML(
     "<b>Status:</b> Ready - Load structure to begin</div>"
 )
 
-# M3GNet Download Helper
-uds_m3gnet_help_button = widgets.Button(
-    description='📥 M3GNet Download Help',
-    button_style='warning',
-    layout=widgets.Layout(width='200px'),
-    tooltip='Show instructions for manually downloading M3GNet model'
-)
-
-def show_m3gnet_download_instructions(b):
-    """Show M3GNet manual download instructions"""
-    uds_log_output.clear_output(wait=False)
-    with uds_log_output:
-        MODEL_NAME = M3GNetModelManager.MODEL_NAME
-        FILES = M3GNetModelManager.REQUIRED_FILES
-        BASE_URL = M3GNetModelManager.GITHUB_BASE_URL
-        
-        log_section("M3GNET MODEL DOWNLOAD INSTRUCTIONS")
-        log_plain("")
-        log_info("Download the M3GNet MatPES-PBE-v2025.1 model:")
-        log_plain("")
-        log_warning("Option 1: Using wget (recommended)")
-        log_plain(f"  mkdir -p ~/.cache/matgl/{MODEL_NAME}")
-        log_plain(f"  cd ~/.cache/matgl/{MODEL_NAME}")
-        for filename in FILES:
-            log_plain(f"  wget {BASE_URL}/{MODEL_NAME}/{filename}")
-        log_plain("")
-        log_warning("Option 2: Using curl")
-        log_plain(f"  mkdir -p ~/.cache/matgl/{MODEL_NAME}")
-        log_plain(f"  cd ~/.cache/matgl/{MODEL_NAME}")
-        for filename in FILES:
-            log_plain(f"  curl -L -o {filename} {BASE_URL}/{MODEL_NAME}/{filename}")
-        log_plain("")
-        log_success("After downloading, just click the button again (no restart needed)!")
-        log_plain("")
-        log_info("Required files:")
-        for filename in FILES:
-            log_plain(f"  - {filename}")
-
-uds_m3gnet_help_button.on_click(show_m3gnet_download_instructions)
 
 # Output areas
 uds_log_output = widgets.Output(
@@ -1873,7 +1850,8 @@ uds_global_state = {
     'all_chempot_limits': None,
     'chempot_table': None,
     'uploaded_cif_data': None,
-    'md_results': {}
+    'md_results': {},
+    'input_source': None
 }
 
 # ===================================================================================
@@ -1936,6 +1914,7 @@ def uds_on_mp_load_clicked(b):
                     struct = get_conventional_structure(struct)
                 
                 uds_global_state['structure'] = struct
+                uds_global_state['input_source'] = 'mp'
                 
                 is_valid, msg, mult = validate_supercell_size(struct, min_size=20.0)
                 
@@ -2058,6 +2037,7 @@ def uds_on_ptable_load_clicked(b):
                     struct = get_conventional_structure(struct)
                 
                 uds_global_state['structure'] = struct
+                uds_global_state['input_source'] = 'ptable'
                 
                 is_valid, msg, mult = validate_supercell_size(struct, min_size=20.0)
                 
@@ -2132,6 +2112,7 @@ def uds_on_cif_upload_change(change):
             
             uds_global_state['structure'] = struct
             uds_global_state['uploaded_cif_data'] = content
+            uds_global_state['input_source'] = 'cif'
             
             comp = struct.composition.reduced_formula
             sg = struct.get_space_group_info()[0]
@@ -2188,6 +2169,7 @@ def uds_on_clear_upload_clicked(b):
         uds_cif_upload._counter = 0
         
         uds_global_state['uploaded_cif_data'] = None
+        uds_global_state['input_source'] = None
         
         log_success("Uploaded files cleared!")
         
@@ -2305,7 +2287,8 @@ def uds_on_phase2_clicked(b):
             uds_global_state['bulk_energy'] = E_bulk
             uds_global_state['bulk_structure'] = bulk_opt
             
-            log_success(f"Bulk Energy: {E_bulk:.6f} eV ({E_bulk_per_atom:.6f} eV/atom)")
+            if uds_global_state.get('input_source') != 'cif':
+                log_success(f"Bulk Energy: {E_bulk:.6f} eV ({E_bulk_per_atom:.6f} eV/atom)")
             log_success("Phase 2 complete!")
             
             # View structure
@@ -2336,6 +2319,7 @@ def uds_on_phase3_clicked(b):
             log_error("Run Phase 2 first!")
             return
         
+        is_cif_input = uds_global_state.get('input_source') == 'cif'
         bulk_opt = uds_global_state['bulk_structure']
         E_bulk = uds_global_state['bulk_energy']
         
@@ -2385,70 +2369,81 @@ def uds_on_phase3_clicked(b):
         uds_global_state['defect_energies'] = defect_energies
         uds_global_state['defect_structures'] = defect_structures
         
-        # Step 2: Chemical Potentials
-        log_section("STEP 2: CHEMICAL POTENTIALS")
-        log_plain("")
-        
-        # Extract impurity elements
-        bulk_elements = set(str(el) for el in bulk_opt.composition.elements)
-        impurity_elements = extract_impurity_elements_from_defects(defects, bulk_elements)
-        
-        if impurity_elements:
-            log_info(f"Impurity elements detected: {impurity_elements}")
-        else:
-            log_info("No impurity elements (native defects only)")
-        
-        api_key = uds_mp_api_key.value.strip() or None
-        
-        try:
-            chempot_dict, chempot_table = calculate_chemical_potentials_simple(
-                bulk_opt,
-                E_bulk,
-                impurity_elements=impurity_elements if impurity_elements else None,
-                api_key=api_key,
-                log_widget=uds_log_output
-            )
-            
-            if chempot_dict is None:
-                raise ValueError("Chemical potential calculation failed")
-            
-            uds_global_state['all_chempot_limits'] = chempot_dict
-            uds_global_state['chempot_table'] = chempot_table
-            
-            first_limit = list(chempot_dict.keys())[0]
-            chempots = chempot_dict[first_limit]
-            
-            log_info(f"Using limit: {first_limit}")
-            
-        except Exception as e:
-            log_error(f"Chemical potential calculation failed: {e}")
-            log_warning("Using placeholder values...")
-            
-            all_elements = list(bulk_elements)
-            if impurity_elements:
-                all_elements.extend(impurity_elements)
-            
-            E_bulk_per_atom = E_bulk / len(bulk_opt)
-            chempots = {el: E_bulk_per_atom / len(all_elements) for el in all_elements}
+        if is_cif_input:
+            log_section("CIF INPUT DETECTED")
+            log_plain("")
+            log_plain("Skipping chemical potentials and formation energy calculations.")
+            chempots = {}
             chempot_table = None
-        
-        uds_global_state['chemical_potentials'] = chempots
-        
-        # Step 3: Formation Energies
-        log_section("STEP 3: DEFECT FORMATION ENERGIES")
-        log_plain("")
-        
-        formation_energies = {}
-        
-        for defect_str, E_defect in defect_energies.items():
-            H_f = calculate_defect_formation_energy(
-                E_defect,
-                E_bulk,
-                chempots,
-                defect_str,
-                log_widget=uds_log_output
-            )
-            formation_energies[defect_str] = H_f
+            formation_energies = {}
+            uds_global_state['all_chempot_limits'] = None
+            uds_global_state['chempot_table'] = None
+            uds_global_state['chemical_potentials'] = chempots
+        else:
+            # Step 2: Chemical Potentials
+            log_section("STEP 2: CHEMICAL POTENTIALS")
+            log_plain("")
+            
+            # Extract impurity elements
+            bulk_elements = set(str(el) for el in bulk_opt.composition.elements)
+            impurity_elements = extract_impurity_elements_from_defects(defects, bulk_elements)
+            
+            if impurity_elements:
+                log_info(f"Impurity elements detected: {impurity_elements}")
+            else:
+                log_info("No impurity elements (native defects only)")
+            
+            api_key = uds_mp_api_key.value.strip() or None
+            
+            try:
+                chempot_dict, chempot_table = calculate_chemical_potentials_simple(
+                    bulk_opt,
+                    E_bulk,
+                    impurity_elements=impurity_elements if impurity_elements else None,
+                    api_key=api_key,
+                    log_widget=uds_log_output
+                )
+                
+                if chempot_dict is None:
+                    raise ValueError("Chemical potential calculation failed")
+                
+                uds_global_state['all_chempot_limits'] = chempot_dict
+                uds_global_state['chempot_table'] = chempot_table
+                
+                first_limit = list(chempot_dict.keys())[0]
+                chempots = chempot_dict[first_limit]
+                
+                log_info(f"Using limit: {first_limit}")
+                
+            except Exception as e:
+                log_error(f"Chemical potential calculation failed: {e}")
+                log_warning("Using placeholder values...")
+                
+                all_elements = list(bulk_elements)
+                if impurity_elements:
+                    all_elements.extend(impurity_elements)
+                
+                E_bulk_per_atom = E_bulk / len(bulk_opt)
+                chempots = {el: E_bulk_per_atom / len(all_elements) for el in all_elements}
+                chempot_table = None
+            
+            uds_global_state['chemical_potentials'] = chempots
+            
+            # Step 3: Formation Energies
+            log_section("STEP 3: DEFECT FORMATION ENERGIES")
+            log_plain("")
+            
+            formation_energies = {}
+            
+            for defect_str, E_defect in defect_energies.items():
+                H_f = calculate_defect_formation_energy(
+                    E_defect,
+                    E_bulk,
+                    chempots,
+                    defect_str,
+                    log_widget=uds_log_output
+                )
+                formation_energies[defect_str] = H_f
         
         # Display results
         with uds_results_output:
@@ -2457,8 +2452,9 @@ def uds_on_phase3_clicked(b):
             log_section("PHASE 3 RESULTS")
             log_plain("")
             
-            log_plain(f"Bulk Energy: {E_bulk:.6f} eV ({E_bulk/len(bulk_opt):.6f} eV/atom)")
-            log_plain("")
+            if not is_cif_input:
+                log_plain(f"Bulk Energy: {E_bulk:.6f} eV ({E_bulk/len(bulk_opt):.6f} eV/atom)")
+                log_plain("")
             
             if chempot_table is not None:
                 log_section("CHEMICAL POTENTIAL LIMITS")
@@ -2466,14 +2462,15 @@ def uds_on_phase3_clicked(b):
                 display(chempot_table)
                 log_plain("")
             
-            log_section("DEFECT FORMATION ENERGIES (q=0)")
-            log_plain("")
-            for defect_str in sorted(formation_energies.keys(), key=lambda x: formation_energies[x]):
-                H_f = formation_energies[defect_str]
-                E_def = defect_energies[defect_str]
-                log_plain(f"{defect_str:15s}  E_def = {E_def:10.4f} eV  →  ΔH_f = {H_f:8.4f} eV")
-            
-            log_plain("")
+            if UDS_SHOW_FORMATION_SUMMARY and formation_energies:
+                log_section("DEFECT FORMATION ENERGIES (q=0)")
+                log_plain("")
+                for defect_str in sorted(formation_energies.keys(), key=lambda x: formation_energies[x]):
+                    H_f = formation_energies[defect_str]
+                    E_def = defect_energies[defect_str]
+                    log_plain(f"{defect_str:15s}  E_def = {E_def:10.4f} eV  →  ΔH_f = {H_f:8.4f} eV")
+                
+                log_plain("")
             
             # Save results
             df = pd.DataFrame({
@@ -2489,66 +2486,67 @@ def uds_on_phase3_clicked(b):
             log_info(f"Results saved to: {csv_path}")
             log_plain("")
             
-            # Create SCATTER PLOT with IMPROVED STYLING
-            fig, ax = plt.subplots(figsize=(18, 12), facecolor='#fafafa')
-            ax.set_facecolor('#f9fafb')
-            
-            plt.rcParams.update({
-                'font.size': 22,
-                'axes.labelsize': 22,
-                'axes.titlesize': 24,
-                'xtick.labelsize': 22,
-                'ytick.labelsize': 22,  # Keeping this default here, overriding below
-                'legend.fontsize': 22,
-                'axes.edgecolor': '#e5e7eb',
-                'axes.labelcolor': '#374151',
-                'text.color': '#374151',
-                'xtick.color': '#6b7280',
-                'ytick.color': '#6b7280'
-            })
-            
-            defects_sorted = sorted(formation_energies.keys(), key=lambda x: formation_energies[x])
-            H_f_values = [formation_energies[d] for d in defects_sorted]
-            
-            x_pos = np.arange(len(defects_sorted))
-            
-            # SCATTER PLOT with soft colors
-            scatter = ax.scatter(x_pos, H_f_values, 
-                                s=500,
-                                color='#a8b8d8',  # Soft blue
-                                edgecolor='#7a8fb5',
-                                linewidth=3, 
-                                alpha=0.85,
-                                zorder=3)
-            
-            ax.set_xticks(x_pos)
-            ax.set_xticklabels(defects_sorted, rotation=45 if len(defects_sorted) > 6 else 0, 
-                              ha='right' if len(defects_sorted) > 6 else 'center',
-                              fontsize=22)
-            ax.set_xlabel('Defect Type', fontsize=22, fontweight='bold', 
-                          color='#374151', labelpad=10)
-            ax.set_ylabel('Formation Energy (eV)', fontsize=28, fontweight='bold', 
-                          color='#374151', labelpad=10)
-            ax.set_title(f'Defect Formation Energies - {bulk_opt.composition.reduced_formula} (q=0)', 
-                        fontsize=24, fontweight='bold', color='#374151', pad=20)
-            
-            ax.axhline(y=0, color='#6b7280', linestyle='-', 
-                      linewidth=2.5, alpha=0.8, zorder=1)
-            
-            ax.grid(True, axis='y', linestyle='-', linewidth=0.8, 
-                   color='#e5e7eb', alpha=0.7)
-            ax.set_axisbelow(True)
-            
-            # --- FORCE Y-TICK LABEL SIZE ---
-            ax.tick_params(axis='y', labelsize=35)  # Increased to 35
-            # -------------------------------
-            
-            for spine in ax.spines.values():
-                spine.set_edgecolor('#e5e7eb')
-                spine.set_linewidth(1.5)
-            
-            plt.tight_layout()
-            plt.show()
+            if formation_energies:
+                # Create SCATTER PLOT with IMPROVED STYLING
+                fig, ax = plt.subplots(figsize=(18, 12), facecolor='#fafafa')
+                ax.set_facecolor('#f9fafb')
+                
+                plt.rcParams.update({
+                    'font.size': 22,
+                    'axes.labelsize': 22,
+                    'axes.titlesize': 24,
+                    'xtick.labelsize': 22,
+                    'ytick.labelsize': 22,  # Keeping this default here, overriding below
+                    'legend.fontsize': 22,
+                    'axes.edgecolor': '#e5e7eb',
+                    'axes.labelcolor': '#374151',
+                    'text.color': '#374151',
+                    'xtick.color': '#6b7280',
+                    'ytick.color': '#6b7280'
+                })
+                
+                defects_sorted = sorted(formation_energies.keys(), key=lambda x: formation_energies[x])
+                H_f_values = [formation_energies[d] for d in defects_sorted]
+                
+                x_pos = np.arange(len(defects_sorted))
+                
+                # SCATTER PLOT with soft colors
+                scatter = ax.scatter(x_pos, H_f_values, 
+                                    s=500,
+                                    color='#a8b8d8',  # Soft blue
+                                    edgecolor='#7a8fb5',
+                                    linewidth=3, 
+                                    alpha=0.85,
+                                    zorder=3)
+                
+                ax.set_xticks(x_pos)
+                ax.set_xticklabels(defects_sorted, rotation=45 if len(defects_sorted) > 6 else 0, 
+                                  ha='right' if len(defects_sorted) > 6 else 'center',
+                                  fontsize=22)
+                ax.set_xlabel('Defect Type', fontsize=22, fontweight='bold', 
+                              color='#374151', labelpad=10)
+                ax.set_ylabel('Formation Energy (eV)', fontsize=34, fontweight='bold', 
+                              color='#374151', labelpad=12)
+                ax.set_title(f'Defect Formation Energies - {bulk_opt.composition.reduced_formula} (q=0)', 
+                            fontsize=24, fontweight='bold', color='#374151', pad=20)
+                
+                ax.axhline(y=0, color='#6b7280', linestyle='-', 
+                          linewidth=2.5, alpha=0.8, zorder=1)
+                
+                ax.grid(True, axis='y', linestyle='-', linewidth=0.8, 
+                       color='#e5e7eb', alpha=0.7)
+                ax.set_axisbelow(True)
+                
+                # --- FORCE Y-TICK LABEL SIZE ---
+                ax.tick_params(axis='y', labelsize=35)  # Increased to 35
+                # -------------------------------
+                
+                for spine in ax.spines.values():
+                    spine.set_edgecolor('#e5e7eb')
+                    spine.set_linewidth(1.5)
+                
+                plt.tight_layout()
+                plt.show()
             
             log_success("Phase 3 complete!")
             
@@ -2681,7 +2679,6 @@ uds_left_panel = widgets.VBox([
     widgets.HTML("<hr style='margin: 20px 0; border-color: " + UDS_COLORS['panel_border'] + ";'>"),
     uds_progress,
     uds_status,
-    uds_m3gnet_help_button,
     widgets.HTML("<hr style='margin: 20px 0; border-color: " + UDS_COLORS['panel_border'] + ";'>"),
     widgets.HTML(f"<h3 style='color:{UDS_COLORS['text_primary']};'>📥 Downloads</h3>"),
     uds_download_container
