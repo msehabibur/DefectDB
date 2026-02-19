@@ -1,7 +1,7 @@
 #!/bin/sh
 
 /usr/bin/invoke_app "$@" \
-  -C "start_jupyter -A -T @tool Cd_Zn_X_v10.ipynb" \
+  -C "start_jupyter -A -T @tool Cd_Zn_X_v3.ipynb" \
   -t defectdatabase \
   -u anaconda-7 \
   -r none \
